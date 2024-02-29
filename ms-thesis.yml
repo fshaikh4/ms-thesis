@@ -14,3 +14,6 @@ dependencies:
    - r-stargazer
    - r-knitr
    - r-xaringan
+   - r-languageserver
+   - radian
+   - r-httpgd
