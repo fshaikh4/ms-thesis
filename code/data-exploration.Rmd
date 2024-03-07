@@ -8,7 +8,7 @@ output:
         toc_float: true
 ---
 
-```{r load relevant packages}
+```{r load relevant packages, warning=F}
 library(tidyverse)
 library(readxl)
 library(forecast)
@@ -19,10 +19,16 @@ This document contains exploratory data analysis on opioid data sources to-be us
 # Opioid Data Sources
 
 ```{r specify data paths}
-data_dir_path <- "d:/Codebase/ms-thesis/data/"
+data_dir_path <- # comment-out appropriate option below
+    # "d:/Codebase/ms-thesis/data/" # laptop
+    "f:/Codebase/ms-thesis/data/" # desktop
 
 vdh_ed_visits_fname <- "Drug-Overdose-ED-Visits_Virginia-January-2024.xlsx"
-cdc_wonder_overdose_deaths_fname <- "outcomes.tsv"
+cdc_wonder_overdose_deaths_fname <- # comment-out appopriate option below
+    # "outcomes.tsv" # old file version
+    "cdc-wonder_final-mcd_1999-2020.tsv" # 1999-2020 final
+    # "cdc-wonder_final-mcd_2018-2021.tsv" # 2018-2021 final
+    # "cdc-wonder_provisional-mcd_2018-feb2024.tsv" # 2018-feb2024 provisional
 ```
 
 As of now, we are using 2 types of data sources: 
@@ -139,7 +145,8 @@ nonheroin_opioid_counts_df[nonheroin_opioid_counts_df$Locality %in% chosen_areas
 cdc_wonder_overdose_deaths_fullpath <- paste0(data_dir_path, cdc_wonder_overdose_deaths_fname)
 
 cdc_wonder_overdose_deaths_df <- read_tsv(cdc_wonder_overdose_deaths_fullpath, # already in long format
-    col_select = c("County", "Year", "Deaths", "Population")
+    col_select = c("County", "Year", "Deaths", "Population") # final cause of death version
+    # col_select = c("Residence County", "Year", "Deaths", "Population") # provisional cause of death version
 ) %>% drop_na()
 
 cdc_localities_df <- cdc_wonder_overdose_deaths_df[,1] %>% unique() %>% as.data.frame()
@@ -151,13 +158,18 @@ cdc_wonder_overdose_deaths_df_wide <- cdc_wonder_overdose_deaths_df %>%
 cdc_wonder_overdose_deaths_ts_list <- sapply(
     cdc_localities_df[,], 
     function(x) cdc_wonder_overdose_deaths_df_wide[cdc_wonder_overdose_deaths_df_wide["County"]==x,] %>% 
-        as.numeric() %>% ts(start=2010, end=2019),
+        as.numeric() %>% ts(start=1999, end=2020), # ensure this is updated to the data
     simplify=FALSE,
     USE.NAMES=TRUE
 )
 ```
 
-As of Wed. 02/28, having issues accessing CDC WONDER data.  In the meantime, have decided to use old CDC WONDER data we had access to (`outcomes.tsv`).
+I have downloaded 3 different versions of CDC WONDER data: 
+ - bridged-race final multiple causes of death (1999-2020), 
+ - single-race final multiple cause of death (2018-2021), and
+ - provisional cause of death (2018-feb2024).
+
+Data utilized apropriate ICD10 codes for underlying cause of death as drug overdose and multiple causes of death codes involving opioid drugs, as specified by the [KFF](https://www.kff.org/other/state-indicator/opioid-overdose-death-rates/?currentTimeframe=0&sortModel=%7B%22colId%22:%22Location%22,%22sort%22:%22asc%22%7D) and a [SAMHSA resource document](https://mnprc.org/wp-content/uploads/2019/01/using-icd-10-codes-to-assess-opioid-related-overdose-deaths.pdf).
 
 ```{r plotting county opioid overdose deaths}
 cdc_wonder_overdose_deaths_df %>% # all data (messy)
