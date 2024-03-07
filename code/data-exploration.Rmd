@@ -8,7 +8,7 @@ output:
         toc_float: true
 ---
 
-```{r load relevant packages, warning=F}
+```{r load_relevant_packages, warning=F}
 library(tidyverse)
 library(readxl)
 library(forecast)
@@ -18,13 +18,13 @@ This document contains exploratory data analysis on opioid data sources to-be us
 
 # Opioid Data Sources
 
-```{r specify data paths}
-data_dir_path <- # comment-out appropriate option below
+```{r specify_data_paths}
+data_dir_path <- # uncomment appropriate option below
     # "d:/Codebase/ms-thesis/data/" # laptop
     "f:/Codebase/ms-thesis/data/" # desktop
 
 vdh_ed_visits_fname <- "Drug-Overdose-ED-Visits_Virginia-January-2024.xlsx"
-cdc_wonder_overdose_deaths_fname <- # comment-out appopriate option below
+cdc_wonder_overdose_deaths_fname <- # uncomment appopriate option below
     # "outcomes.tsv" # old file version
     "cdc-wonder_final-mcd_1999-2020.tsv" # 1999-2020 final
     # "cdc-wonder_final-mcd_2018-2021.tsv" # 2018-2021 final
@@ -40,7 +40,7 @@ Below, we perform data exploration on these sources separately.
 
 ## Emergency Department Visits
 
-```{r read vdh ed visits data, message=F, warning=F}
+```{r read_vdh_ed_visits_data, message=F, warning=F}
 vdh_ed_visits_fullpath <- paste0(data_dir_path, vdh_ed_visits_fname) # precombine fname parts
 vdh_ed_visits_sheetslist <- excel_sheets(vdh_ed_visits_fullpath) # get list of worksheet "tabs" for MS Excel workbook file
 
@@ -93,55 +93,9 @@ heroin_counts_df <- heroin_counts_df_wide %>% pivot_longer(
 
 According to VDH criteria, [opioid data seems to exclude "heroin"](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-case-definition/#:~:text=medication%20or%20drug%2C-,heroin,-%2C%20dope%2C%20speed%20ball) ICD codes; may be relevant to combine opioid and heroin data from VDH sources.
 
-```{r plotting county heroin ed visits}
-heroin_counts_df %>% # all data (messy)
-    ggplot(aes(x=Month, y=`Count: Heroin ED Visits`, group=Locality)) + 
-        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
-        theme_classic() + theme(legend.position = "none")
-
-heroin_counts_ts_list %>% names() %>% 
-    sapply(function(x) ggseasonplot(heroin_counts_ts_list[[x]], polar=TRUE) + theme_classic(), # seasonal polar plot
-        simplify=FALSE, USE.NAMES=TRUE
-)
-
-heroin_counts_df[heroin_counts_df["Locality"] == "VIRGINIA",] %>% # Virginia state overall
-    ggplot(aes(x=Month, y=`Count: Heroin ED Visits`, group=Locality)) + 
-        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
-        theme_classic() + theme(legend.position = "none")
-
-chosen_areas <- c("Alexandria City", "Fairfax County", "Fairfax City")
-heroin_counts_df[heroin_counts_df$Locality %in% chosen_areas,] %>% # chosen areas
-    ggplot(aes(x=Month, y=`Count: Heroin ED Visits`, group=Locality)) + 
-        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
-        theme_classic() + theme(legend.position = "top")
-```
-
-```{r plotting county nonheroin opioid ed visits}
-nonheroin_opioid_counts_df %>% # all data (messy)
-    ggplot(aes(x=Month, y=`Count: Nonheroin Opioid ED Visits`, group=Locality)) + 
-        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
-        theme_classic() + theme(legend.position = "none")
-
-nonheroin_opioid_counts_ts_list %>% names() %>% 
-    sapply(function(x) ggseasonplot(nonheroin_opioid_counts_ts_list[[x]], polar=TRUE) + theme_classic(), # seasonal polar plot
-        simplify=FALSE, USE.NAMES=TRUE
-)
-
-nonheroin_opioid_counts_df[nonheroin_opioid_counts_df["Locality"] == "VIRGINIA",] %>% # Virginia state overall
-    ggplot(aes(x=Month, y=`Count: Nonheroin Opioid ED Visits`, group=Locality)) + 
-        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
-        theme_classic() + theme(legend.position = "none")
-
-chosen_areas <- c("Alexandria City", "Fairfax County", "Fairfax City")
-nonheroin_opioid_counts_df[nonheroin_opioid_counts_df$Locality %in% chosen_areas,] %>% # chosen areas
-    ggplot(aes(x=Month, y=`Count: Nonheroin Opioid ED Visits`, group=Locality)) + 
-        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
-        theme_classic() + theme(legend.position = "top")
-```
-
 ## Overdose Deaths
 
-```{r read cdc wonder overdose deaths data, warning=F}
+```{r read_cdc_wonder_overdose_deaths_data, warning=F}
 cdc_wonder_overdose_deaths_fullpath <- paste0(data_dir_path, cdc_wonder_overdose_deaths_fname)
 
 cdc_wonder_overdose_deaths_df <- read_tsv(cdc_wonder_overdose_deaths_fullpath, # already in long format
@@ -171,7 +125,76 @@ I have downloaded 3 different versions of CDC WONDER data:
 
 Data utilized apropriate ICD10 codes for underlying cause of death as drug overdose and multiple causes of death codes involving opioid drugs, as specified by the [KFF](https://www.kff.org/other/state-indicator/opioid-overdose-death-rates/?currentTimeframe=0&sortModel=%7B%22colId%22:%22Location%22,%22sort%22:%22asc%22%7D) and a [SAMHSA resource document](https://mnprc.org/wp-content/uploads/2019/01/using-icd-10-codes-to-assess-opioid-related-overdose-deaths.pdf).
 
-```{r plotting county opioid overdose deaths}
+# Data Missingness
+
+## Overdose Emergency Department Visits
+```{r tabulate_data_missingness_edvisits}
+vdh_ed_visits_heroin
+```
+
+## Overdose Deaths
+```{r tabulate_data_missingness_deaths}
+cdc_wonder_overdose_deaths_df %>% 
+    mutate(Deaths = as.numeric(Deaths)) %>% 
+    group_by(County) %>% 
+    summarize(nonNA_deaths = sum(!is.na(Deaths)), nonzero_nonNA_deaths = sum(!is.na(Deaths) & (Deaths != 0))) %>% 
+    arrange(desc(nonzero_nonNA_deaths)) %>% # sort descending by nonzero&nonNA values
+    print(n=135) # print all 135 counties
+```
+
+# Exploratory Data Visualization
+
+## Overdose Emergency Department Visits
+
+```{r plotting_county_heroin_ed_visits, eval=F}
+heroin_counts_df %>% # all data (messy)
+    ggplot(aes(x=Month, y=`Count: Heroin ED Visits`, group=Locality)) + 
+        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
+        theme_classic() + theme(legend.position = "none")
+
+heroin_counts_ts_list %>% names() %>% 
+    sapply(function(x) ggseasonplot(heroin_counts_ts_list[[x]], polar=TRUE) + theme_classic(), # seasonal polar plot
+        simplify=FALSE, USE.NAMES=TRUE
+)
+
+heroin_counts_df[heroin_counts_df["Locality"] == "VIRGINIA",] %>% # Virginia state overall
+    ggplot(aes(x=Month, y=`Count: Heroin ED Visits`, group=Locality)) + 
+        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
+        theme_classic() + theme(legend.position = "none")
+
+chosen_areas <- c("Alexandria City", "Fairfax County", "Fairfax City")
+heroin_counts_df[heroin_counts_df$Locality %in% chosen_areas,] %>% # chosen areas
+    ggplot(aes(x=Month, y=`Count: Heroin ED Visits`, group=Locality)) + 
+        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
+        theme_classic() + theme(legend.position = "top")
+```
+
+```{r plotting_county_nonheroin_opioid_ed_visits, eval=F}
+nonheroin_opioid_counts_df %>% # all data (messy)
+    ggplot(aes(x=Month, y=`Count: Nonheroin Opioid ED Visits`, group=Locality)) + 
+        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
+        theme_classic() + theme(legend.position = "none")
+
+nonheroin_opioid_counts_ts_list %>% names() %>% 
+    sapply(function(x) ggseasonplot(nonheroin_opioid_counts_ts_list[[x]], polar=TRUE) + theme_classic(), # seasonal polar plot
+        simplify=FALSE, USE.NAMES=TRUE
+)
+
+nonheroin_opioid_counts_df[nonheroin_opioid_counts_df["Locality"] == "VIRGINIA",] %>% # Virginia state overall
+    ggplot(aes(x=Month, y=`Count: Nonheroin Opioid ED Visits`, group=Locality)) + 
+        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
+        theme_classic() + theme(legend.position = "none")
+
+chosen_areas <- c("Alexandria City", "Fairfax County", "Fairfax City")
+nonheroin_opioid_counts_df[nonheroin_opioid_counts_df$Locality %in% chosen_areas,] %>% # chosen areas
+    ggplot(aes(x=Month, y=`Count: Nonheroin Opioid ED Visits`, group=Locality)) + 
+        geom_line(aes(color=Locality)) + geom_point(aes(color=Locality)) + 
+        theme_classic() + theme(legend.position = "top")
+```
+
+## Overdose Deaths
+
+```{r plotting_county_opioid_overdose_deaths, eval=F}
 cdc_wonder_overdose_deaths_df %>% # all data (messy)
     ggplot(aes(x=Year, y=Deaths, group=County)) + 
         geom_line(aes(color=County)) + geom_point(aes(color=County)) + 
@@ -186,4 +209,17 @@ cdc_wonder_overdose_deaths_df[cdc_wonder_overdose_deaths_df$County %in% chosen_a
         theme_classic() + theme(legend.position = "top")
 ```
 
-# Data Missingness
+
+# Remaining Action Items
+ - solve `readRDS(pfile): error reading the file` warnings (50+) issue in [first chunk](#load_relevant_packages) (without simply `warning=F` flagging the chunk)
+ - properly describe & reference CDC WONDER data selection: underlying causes as overdose and multiple causes to include all classes of opioid drugs
+ - describe missingness/suppression/etc of VA counties for each data source
+ - merge CDC WONDER data files: evaluate merge based on # of mismatches b/w overlapping years (2018-2020)
+    - merge 1: 1999-2020 final (bridged-race) + 2018-2021 final (single-race)
+    - merge 2: merge 1 + 2018-feb2024 provisional
+    - keep merge 1 and merge 2 separate, for final versus provisional analyses
+ - determine & document inclusion/exclusion criteria for county-trajectories
+ - visualize all-county (meeting inclusion criteria) overdose emergency department visits
+ - visualize all-county (meeting inclusion criteria) overdose deaths
+ - on a per-county basis, visualize all counties' (meeting inclusion criteria) overdose emergency department visits and overdose deaths on the same plot (vertical axis: "cases" rather than unique individuals, etc.)
+ - find & visualize relevant national data on this topic
