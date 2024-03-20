@@ -13,9 +13,9 @@ This document contains exploratory data analysis on opioid overdose data sources
 ```{r load_relevant_packages, warning=F, message=F}
 library(tidyverse)
 library(readxl)
-library(stringr)
-library(forecast)
-library(broom)
+# library(stringr)
+# library(forecast)
+# library(broom)
 ```
 
 # Opioid Data Sources
@@ -106,6 +106,9 @@ nonheroin_opioid_edvisits_df <-
         cols = dates_vec,
         names_to = "Year", # ensure this is updated to match the data timeframe
         values_to = "Count: Nonheroin Opioid ED Visits"
+    ) %>%
+    mutate(`Count: Nonheroin Opioid ED Visits` =
+        as.numeric(`Count: Nonheroin Opioid ED Visits`)
     )
 
 ## output data: heroin (opioid) ED visits
@@ -122,7 +125,7 @@ heroin_edvisits_ts_list <- # heroin ED visit ts objects stored in named list
             ts(start = 2015, end = 2023, frequency = 1)
         }, # ensure this is updated to the data
     simplify = FALSE, USE.NAMES = TRUE
-)
+    )
 
 heroin_edvisits_df <-
     heroin_wide %>%
@@ -130,6 +133,9 @@ heroin_edvisits_df <-
         cols = dates_vec,
         names_to = "Year", # ensure this is updated to match the data timeframe
         values_to = "Count: Heroin ED Visits"
+    ) %>%
+    mutate(`Count: Heroin ED Visits` =
+        as.numeric(`Count: Heroin ED Visits`)
     )
 
 ## output data: combined ED visits [heroin (opioid) + nonheroin opioid]
@@ -143,13 +149,11 @@ combined_edvisits_df <-
     mutate(
         Year = as.numeric(str_sub(Year, end = -6)), # ensure this is updated to
                                                     # match the data timeframe
-        heroin = as.numeric(heroin),
-        nonheroin_opioid = as.numeric(nonheroin_opioid),
         combined = sum(c(heroin, nonheroin_opioid)),
     )
 ```
 
-According to VDH criteria, [opioid data seems to exclude "heroin"](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-case-definition/#:~:text=medication%20or%20drug%2C-,heroin,-%2C%20dope%2C%20speed%20ball) ICD codes; may be relevant to combine opioid and heroin data from VDH sources.
+According to VDH criteria, [opioid data seems to exclude "heroin"](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-case-definition/#:~:text=medication%20or%20drug%2C-,heroin,-%2C%20dope%2C%20speed%20ball) ICD codes.  Experts believe heroin opioid overdose deaths have plateaued in the wake of the latest wave(s) of the opioid epidemic, driven now heavily by synthetic opioids such as fentanyl.  We therefore visualize heroin ED visits [in a dedicated section](#heroin-visualized) to verify this.
 
 ## Overdose Deaths
 
@@ -205,7 +209,7 @@ overdose_deaths_tslist <- # overdose death ts objects stored in named list
     },
     simplify = FALSE,
     USE.NAMES = TRUE
-)
+    )
 ```
 
 I have downloaded 3 different versions of CDC WONDER data: 
@@ -215,15 +219,12 @@ I have downloaded 3 different versions of CDC WONDER data:
 
 Data utilized apropriate ICD10 codes for underlying cause of death as drug overdose and multiple causes of death codes involving opioid drugs, as specified by the [KFF](https://www.kff.org/other/state-indicator/opioid-overdose-death-rates/?currentTimeframe=0&sortModel=%7B%22colId%22:%22Location%22,%22sort%22:%22asc%22%7D) and a [SAMHSA resource document](https://mnprc.org/wp-content/uploads/2019/01/using-icd-10-codes-to-assess-opioid-related-overdose-deaths.pdf).
 
-```{r}
-
-```
-
 # Data Missingness
 
 Below tibbles show the data "fullness" (non-missingness).  We may choose to select Counties for inclusion based on their data availability.  We choose to look at both non-NA as well as {non-NA AND nonzero} non-missingness, since a County with a low population may alternate between zero and missing values based on data suppression.
 
 ## ED Visits
+
 ```{r tabulate_data_missingness_edvisits}
 combined_edvisits_df %>%
     group_by(Locality) %>%
@@ -270,57 +271,71 @@ chosen_areas <- c("ALEXANDRIA CITY", "FAIRFAX COUNTY", "FAIRFAX CITY")
 
 ## ED Visits
 
+### Combined heroin and nonheroin opioids
+
 ```{r plotting_county_opioid_ed_visits}
-combined_edvisits_df %>%
-    filter(Locality != "VIRGINIA") %>% # all county data (messy)
+# generic plotting function for combined opioid ED visits
+combined_edvisits_plotter <- function(locality) {
+    combined_edvisits_df %>%
+    filter(Locality == locality) %>%
     ggplot(aes(x = Year, y = combined, group = Locality)) +
-        geom_line(aes(color = Locality)) +
-        geom_point(aes(color = Locality)) +
+        geom_line() +
+        geom_point() +
         theme_classic() +
         theme(legend.position = "none")
+}
+# plot Virginia state overall
+combined_edvisits_plotter("VIRGINIA")
 
-combined_edvisits_df %>%
-    filter(Locality == "VIRGINIA") %>% # Virginia state overall
-    ggplot(aes(x = Year, y = combined, group = Locality)) +
-        geom_line(aes(color = Locality)) +
-        geom_point(aes(color = Locality)) +
+# plot each county (separately)
+lapply(vdh_localities_df[["Locality"]], combined_edvisits_plotter)
+```
+
+### Heroin alone {#heroin-visualized}
+
+We are interested in verifying claims that heroin ED visits plateau in recent times.  We recreate many of the above plots generated for all opioids (heroin included) below.
+
+```{r plotting_county_heroin_ed_visits}
+# generic plotting function for heroin ED visits
+heroin_plotter <- function(locality) {
+    heroin_edvisits_df %>%
+    filter(Locality == locality) %>%
+    ggplot(aes(x = Year, y = `Count: Heroin ED Visits`, group = 1)) +
+        geom_line() +
+        geom_point() +
         theme_classic() +
-        theme(legend.position = "none")
+        theme(legend.position = "none") +
+        ggtitle(locality)
+}
 
-combined_edvisits_df %>%
-    filter(Locality %in% chosen_areas) %>% # chosen areas
-    ggplot(aes(x = Year, y = combined, group = Locality)) +
-        geom_line(aes(color = Locality)) +
-        geom_point(aes(color = Locality)) +
-        theme_classic() + theme(legend.position = "top")
+# plot Virginia state overall
+heroin_plotter("VIRGINIA")
+
+# plot each county (separately)
+lapply(vdh_localities_df[["Locality"]], heroin_plotter)
 ```
 
 ## Overdose Deaths
 
 ```{r plotting_county_opioid_overdose_deaths}
-cdc_wonder_overdose_deaths_df %>% # all county data (messy)
+# generic plotting function for opioid overdose deaths
+overdose_death_plotter <- function(locality) {
+    cdc_wonder_overdose_deaths_df %>%
+    filter(County == locality) %>%
     ggplot(aes(x = Year, y = Deaths, group = County)) +
-        geom_line(aes(color = County)) +
-        geom_point(aes(color = County)) +
+        geom_line() +
+        geom_point() +
         theme_classic() +
         theme(legend.position = "none")
+}
 
-cdc_wonder_overdose_deaths_df %>%
-    filter(County %in% chosen_areas) %>% # chosen areas
-    ggplot(aes(x = Year, y = Deaths, group = County)) +
-        geom_line(aes(color = County)) +
-        geom_point(aes(color = County)) +
-        theme_classic() +
-        theme(legend.position = "top")
+# plot each county (separately)
+lapply(vdh_localities_df[["Locality"]], overdose_death_plotter)
 ```
 
 It may be pertinent to compare plots of opioid overdose deaths (especially the Virginia state-level data) to national trends, such as the graph below from the NIDA site:
 
 ![](https://nida.nih.gov/sites/default/files/images/2023-Drug-od-death-rates-3.jpeg)
-
-Below, I have generated a plot via CDC wonder of Virginia state-level opioid overdose data over time:
-
-![](https://wonder.cdc.gov/wonder/chart-map/c1710390480557-0.jpeg)
 
 # Exploratory Modeling
 
@@ -344,3 +359,9 @@ Following the above data exploration, we have determined the following:
  - visualize all-county (meeting inclusion criteria) overdose deaths
  - on a per-county basis, visualize all counties' (meeting inclusion criteria) overdose emergency department visits and overdose deaths on the same plot (vertical axis: "cases" rather than unique individuals, etc.)
  - find & visualize relevant national data on this topic
+ - remove old CDC WONDER graphic (state-aggregated data for Virginia)
+ - re-download CDC WONDER data to include Virginia state-aggregated data
+ - visualize state-aggregated Virginia data in place of old removed CDC WONDER graphic
+ - calculate trajectory slopes & intercepts
+ - visualize missingness, trajectory slopes, and trajectory intercepts on chloropleth maps
+ - visualize missingness, trajectory slopes, and trajectory intercepts on table
