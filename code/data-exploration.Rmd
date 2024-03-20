@@ -49,7 +49,7 @@ cdc_overdose_deaths_18_21_fname <-
 We utilize the Virginia Department of Health website to download data on unintentional drug overdose from the [syndromic surveillance webpage](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-surveillance/).  Data are in the form of a Microsoft Excel workbook and are loaded-in via the below chunk:
 
 ```{r read_vdh_ed_visits_data, message=F, warning=F}
-# preparation for reading-in data
+# preparation for reading-in data: VDH opioid overdose ED visits
 vdh_ed_visits_fullpath <-
     paste0(data_dir_path, vdh_ed_visits_fname) # precombine fname parts
 vdh_ed_visits_sheetslist <-
@@ -57,7 +57,7 @@ vdh_ed_visits_sheetslist <-
                                          # Excel workbook file to mask for
                                          # specific sheet(s)
 
-# reading-in data
+# reading-in data: VDH opioid overdose ED visits
 vdh_ed_visits_nonheroin_opioid <- read_excel(
     path = vdh_ed_visits_fullpath,
     sheet = vdh_ed_visits_sheetslist[5] # locality opioid
@@ -67,12 +67,13 @@ vdh_ed_visits_heroin <- read_excel(
     sheet = vdh_ed_visits_sheetslist[6] # locality heroin
 )
 
-# data preprocessing
-dates_vec <- # create years date vector to mask larger data frame
+## output data: nonheroin opioid ED visits
+dates_vec <- # derived years date-vector for time masking (as-needed)
     2015:2023 %>%
     paste("Total") # Year "Total"
-vdh_localities_df <-
-    vdh_ed_visits_nonheroin_opioid["OPIOID"][-1,] %>%
+
+vdh_localities_df <- # derived data frame for geographic masking (as-needed)
+    vdh_ed_visits_nonheroin_opioid["OPIOID"][-1, ] %>%
     rename("Locality" = "OPIOID") %>%
     lapply(
         function(x) str_replace_all(x, "[^a-zA-Z0-9 ]", "") # remove special
@@ -82,7 +83,6 @@ vdh_localities_df <-
     as.data.frame() %>%
     mutate(Locality = str_to_upper(Locality))
 
-# nonheroin opiod ED visits
 nonheroin_wide <- # nonheroin opioid ED visits (wide format)
     vdh_localities_df %>%
     cbind(vdh_ed_visits_nonheroin_opioid[dates_vec][-1, ])
@@ -108,7 +108,7 @@ nonheroin_opioid_edvisits_df <-
         values_to = "Count: Nonheroin Opioid ED Visits"
     )
 
-# heroin (opioid) ED visits
+## output data: heroin (opioid) ED visits
 heroin_wide <- # heroin ED visits (wide format)
     vdh_localities_df %>%
     cbind(vdh_ed_visits_heroin[dates_vec][-1, ])
@@ -132,6 +132,7 @@ heroin_edvisits_df <-
         values_to = "Count: Heroin ED Visits"
     )
 
+## output data: combined ED visits [heroin (opioid) + nonheroin opioid]
 combined_edvisits_df <-
     inner_join(heroin_edvisits_df, nonheroin_opioid_edvisits_df) %>%
     group_by(Locality, Year) %>%
@@ -153,41 +154,57 @@ According to VDH criteria, [opioid data seems to exclude "heroin"](https://www.v
 ## Overdose Deaths
 
 ```{r read_cdc_wonder_overdose_deaths_data, warning=F}
-cdc_wonder_overdose_deaths_99_20_fullpath <- paste0(data_dir_path, cdc_wonder_overdose_deaths_99_20_fname)
-cdc_overdose_deaths_18_21_fullpath <- paste0(data_dir_path, cdc_overdose_deaths_18_21_fname)
+# preparation for reading-in data: CDC WONDER opioid overdose deaths
+cdc_wonder_overdose_deaths_99_20_fullpath <-
+    paste0(data_dir_path, cdc_wonder_overdose_deaths_99_20_fname)
+cdc_overdose_deaths_18_21_fullpath <-
+    paste0(data_dir_path, cdc_overdose_deaths_18_21_fname)
 
-cdc_wonder_overdose_deaths_99_20_df <- read_tsv(
+# reading-in data: CDC WONDER opioid overdose deaths
+cdc_wonder_overdose_deaths_99_20_df <- # 1999-2020 data
+    read_tsv(
         cdc_wonder_overdose_deaths_99_20_fullpath, # already in long format
-        col_select = c("County", "Year", "Deaths", "Population")) %>% # final cause of death version
-    drop_na() %>% 
-    mutate(Deaths = as.numeric(Deaths)) %>% 
-    mutate(County = str_sub(str_to_upper(County), end=-5))
+        col_select = c("County", "Year", "Deaths", "Population")) %>%
+    drop_na() %>%
+    mutate(Deaths = as.numeric(Deaths)) %>%
+    mutate(County = str_sub(str_to_upper(County), end = -5))
 
-cdc_wonder_overdose_deaths_20_21_df <- read_tsv(
+cdc_wonder_overdose_deaths_20_21_df <- # 2018-2021 data
+    read_tsv(
         cdc_overdose_deaths_18_21_fullpath, # already in long format
-        col_select = c("County", "Year", "Deaths", "Population")) %>% # final cause of death version
-    drop_na() %>% 
-    mutate(Deaths = as.numeric(Deaths)) %>% 
-    mutate(County = str_sub(str_to_upper(County), end=-5)) %>%
-    filter(Year > 2020)
+        col_select = c("County", "Year", "Deaths", "Population")) %>%
+    drop_na() %>%
+    mutate(Deaths = as.numeric(Deaths)) %>%
+    mutate(County = str_sub(str_to_upper(County), end = -5)) %>%
+    filter(Year > 2020) # remove overlap from 1999-2020 data
 
-# 2 different merges: merge 1 (no provisional) and merge 2 (includes provisional)
-cdc_wonder_overdose_deaths_df <- rbind( # merge_1: 1999-2020 + 2018-2021
-    cdc_wonder_overdose_deaths_99_20_df,
-    cdc_wonder_overdose_deaths_20_21_df
+# data preprocessing: CDC WONDER opioid overdose deaths
+cdc_wonder_overdose_deaths_df <- rbind( # data merge: 1999-2020 + 2018-2021
+    cdc_wonder_overdose_deaths_99_20_df, # 1999-2020 data
+    cdc_wonder_overdose_deaths_20_21_df # 2018-2021 data
 )
 
-cdc_localities_df <- cdc_wonder_overdose_deaths_df[,1] %>% unique() %>% as.data.frame()
-cdc_wonder_overdose_deaths_df_wide <- cdc_wonder_overdose_deaths_df %>% 
-    select(c(County, Year, Deaths)) %>% group_by(County) %>% 
+cdc_localities_df <- # derived data frame for geographic masking (as-needed)
+    cdc_wonder_overdose_deaths_df[, 1] %>%
+    unique() %>%
+    as.data.frame()
+
+overdose_deaths_wide <- # opioid overdose deaths (wide format)
+    cdc_wonder_overdose_deaths_df %>%
+    select(c(County, Year, Deaths)) %>%
+    group_by(County) %>%
     pivot_wider(names_from = Year, values_from = Deaths)
 
-cdc_wonder_overdose_deaths_ts_list <- sapply(
-    cdc_localities_df[,], 
-    function(x) cdc_wonder_overdose_deaths_df_wide[cdc_wonder_overdose_deaths_df_wide["County"]==x,] %>% 
-        as.numeric() %>% ts(start=1999, end=2020), # ensure this is updated to the data
-    simplify=FALSE,
-    USE.NAMES=TRUE
+overdose_deaths_tslist <- # overdose death ts objects stored in named list
+    sapply(
+    cdc_localities_df[, ],
+    function(x) {
+        overdose_deaths_wide[overdose_deaths_wide["County"] == x, ] %>%
+        as.numeric() %>%
+        ts(start = 1999, end = 2020) # ensure this is updated to the data
+    },
+    simplify = FALSE,
+    USE.NAMES = TRUE
 )
 ```
 
@@ -198,6 +215,10 @@ I have downloaded 3 different versions of CDC WONDER data:
 
 Data utilized apropriate ICD10 codes for underlying cause of death as drug overdose and multiple causes of death codes involving opioid drugs, as specified by the [KFF](https://www.kff.org/other/state-indicator/opioid-overdose-death-rates/?currentTimeframe=0&sortModel=%7B%22colId%22:%22Location%22,%22sort%22:%22asc%22%7D) and a [SAMHSA resource document](https://mnprc.org/wp-content/uploads/2019/01/using-icd-10-codes-to-assess-opioid-related-overdose-deaths.pdf).
 
+```{r}
+
+```
+
 # Data Missingness
 
 Below tibbles show the data "fullness" (non-missingness).  We may choose to select Counties for inclusion based on their data availability.  We choose to look at both non-NA as well as {non-NA AND nonzero} non-missingness, since a County with a low population may alternate between zero and missing values based on data suppression.
@@ -206,19 +227,31 @@ Below tibbles show the data "fullness" (non-missingness).  We may choose to sele
 ```{r tabulate_data_missingness_edvisits}
 combined_edvisits_df %>%
     group_by(Locality) %>%
-    summarize(nonNA_combined_edvisits = sum(!is.na(combined)), nonzero_nonNA_combined_edvisits = sum(!is.na(combined) & (combined != 0))) %>%
-    arrange(desc(nonzero_nonNA_combined_edvisits)) %>% # sort descending by nonzero%nonNA values
-    print(n=135) # print all 135 counties
+    summarize(
+        nonNA_combined_edvisits =
+            sum(!is.na(combined)),
+        nonzero_nonNA_combined_edvisits =
+            sum(!is.na(combined) & (combined != 0))
+    ) %>%
+    arrange(desc(nonzero_nonNA_combined_edvisits)) %>% # sort descending by
+                                                       # nonzero & nonNA values
+    print(n = 135) # print all 135 counties
 ```
 
 ## Overdose Deaths
 ```{r tabulate_data_missingness_deaths}
-cdc_wonder_overdose_deaths_df %>% 
-    mutate(Deaths = as.numeric(Deaths)) %>% 
-    group_by(County) %>% 
-    summarize(nonNA_deaths = sum(!is.na(Deaths)), nonzero_nonNA_deaths = sum(!is.na(Deaths) & (Deaths != 0))) %>% 
-    arrange(desc(nonzero_nonNA_deaths)) %>% # sort descending by nonzero&nonNA values
-    print(n=135) # print all 135 counties
+cdc_wonder_overdose_deaths_df %>%
+    mutate(Deaths = as.numeric(Deaths)) %>%
+    group_by(County) %>%
+    summarize(
+        nonNA_deaths =
+            sum(!is.na(Deaths)),
+        nonzero_nonNA_deaths =
+            sum(!is.na(Deaths) & (Deaths != 0))
+    ) %>%
+    arrange(desc(nonzero_nonNA_deaths)) %>% # sort descending by nonzero & nonNA
+                                            # values
+    print(n = 135) # print all 135 counties
 ```
 
 # Exploratory Data Visualization
