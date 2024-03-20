@@ -282,7 +282,9 @@ combined_edvisits_plotter <- function(locality) {
         geom_line() +
         geom_point() +
         theme_classic() +
-        theme(legend.position = "none")
+        theme(legend.position = "none") +
+        ggtitle(paste0(locality, ": OPIOID ED VISITS")) +
+        ylab("Count: Combined Opioid (incl. Heroin) ED Visits")
 }
 # plot Virginia state overall
 combined_edvisits_plotter("VIRGINIA")
@@ -305,7 +307,7 @@ heroin_plotter <- function(locality) {
         geom_point() +
         theme_classic() +
         theme(legend.position = "none") +
-        ggtitle(locality)
+        ggtitle(paste0(locality, ": HEROIN ED VISITS"))
 }
 
 # plot Virginia state overall
@@ -326,7 +328,9 @@ overdose_death_plotter <- function(locality) {
         geom_line() +
         geom_point() +
         theme_classic() +
-        theme(legend.position = "none")
+        theme(legend.position = "none") +
+        ggtitle(paste0(locality, ": OPIOID OVERDOSE DEATHS")) +
+        ylab("Count: Opioid Overdose Deaths")
 }
 
 # plot each county (separately)
@@ -349,14 +353,7 @@ Following the above data exploration, we have determined the following:
 # Remaining Action Items
  - solve `readRDS(pfile): error reading the file` warnings (50+) issue in [first chunk](#load_relevant_packages) (without simply `warning=F` flagging the chunk)
  - properly describe & reference CDC WONDER data selection: underlying causes as overdose and multiple causes to include all classes of opioid drugs
- - describe missingness/suppression/etc of VA counties for each data source
- - merge CDC WONDER data files: evaluate merge based on # of mismatches b/w overlapping years (2018-2020)
-    - merge 1: 1999-2020 final (bridged-race) + 2018-2021 final (single-race)
-    - merge 2: merge 1 + 2018-feb2024 provisional
-    - keep merge 1 and merge 2 separate, for final versus provisional analyses
  - determine & document inclusion/exclusion criteria for county-trajectories
- - visualize all-county (meeting inclusion criteria) overdose emergency department visits
- - visualize all-county (meeting inclusion criteria) overdose deaths
  - on a per-county basis, visualize all counties' (meeting inclusion criteria) overdose emergency department visits and overdose deaths on the same plot (vertical axis: "cases" rather than unique individuals, etc.)
  - find & visualize relevant national data on this topic
  - remove old CDC WONDER graphic (state-aggregated data for Virginia)
