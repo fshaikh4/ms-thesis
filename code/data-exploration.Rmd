@@ -516,6 +516,22 @@ alldata_summarized_df %>% # intercepts
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 ```
 
+We also print an excerpt of `alldata_summarized` below, to show all coefficients in tabular format and various values:
+
+```{r print_summary_table}
+alldata_summarized_df %>%
+    select( # select only relevant variables for table display
+        Locality,
+        edvisits_timecoeff,
+        edvisits_pop_coeff,
+        edvisits_intercept,
+        deaths_timecoeff,
+        deaths_pop_coeff,
+        deaths_intercept
+    ) %>%
+    knitr::kable(style = "html")
+```
+
 # Remaining Action Items
 
  - solve `readRDS(pfile): error reading the file` warnings (50+) issue in [first chunk](#load_relevant_packages) (without simply `warning=F` flagging the chunk)
