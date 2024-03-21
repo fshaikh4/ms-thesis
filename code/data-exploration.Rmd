@@ -404,23 +404,26 @@ alldata_df <- # merge edvisits and overdose deaths dataframes (and geography)
     left_join( # combine above with geography
         va_counties,
         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
-    )
+    ) %>%
+    mutate(Population = as.numeric(Population)) # code Population as numeric
 
 # additional processing: remove NAs, group data, and calculate slopes/intercepts
 alldata_summarized_df <- alldata_df %>%
     na.exclude() %>% # remove NAs
     group_by(Locality) %>% # group data
     summarize( # calculate slopes/intercepts
-        edvisits_timecoeff = coef(lm(combined ~ Year))[[2]],
-        edvisits_intercept = coef(lm(combined ~ Year))[[1]],
-        deaths_timecoeff = coef(lm(Deaths ~ Year))[[2]],
-        deaths_intercept = coef(lm(Deaths ~ Year))[[1]]
+        edvisits_timecoeff = coef(lm(combined ~ Year + Population))[[2]],
+        edvisits_intercept = coef(lm(combined ~ Year + Population))[[1]],
+        edvisits_pop_coeff = coef(lm(combined ~ Year + Population))[[3]],
+        deaths_timecoeff = coef(lm(Deaths ~ Year + Population))[[2]],
+        deaths_intercept = coef(lm(Deaths ~ Year + Population))[[1]],
+        deaths_pop_coeff = coef(lm(Deaths ~ Year + Population))[[3]]
     ) %>%
     right_join(va_counties, by = c("Locality" = "NAMELSAD")) # merge-back
                                                              # removed counties
 
 # plot slopes/intercepts for edvisits data
-alldata_summarized_df %>% # slopes
+alldata_summarized_df %>% # time-slopes
     ggplot() +
     geom_sf(aes(fill = edvisits_timecoeff, geometry = geometry)) +
     scale_fill_gradient2( # ggplot2 3.3.5 syntax
@@ -433,6 +436,22 @@ alldata_summarized_df %>% # slopes
     ) +
     theme_void() +
     ggtitle("Time-slopes for opioid overdose ED visits") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+# plot slopes/intercepts for edvisits data
+alldata_summarized_df %>% # population covariate coefficient
+    ggplot() +
+    geom_sf(aes(fill = edvisits_pop_coeff, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Population covariate coefficient for opioid overdose ED visits") +
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
 alldata_summarized_df %>% # intercepts
@@ -451,7 +470,7 @@ alldata_summarized_df %>% # intercepts
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
 # plot slopes/intercepts for deaths data
-alldata_summarized_df %>% # slopes
+alldata_summarized_df %>% # time-slopes
     ggplot() +
     geom_sf(aes(fill = deaths_timecoeff, geometry = geometry)) +
     scale_fill_gradient2( # ggplot2 3.3.5 syntax
@@ -464,6 +483,21 @@ alldata_summarized_df %>% # slopes
     ) +
     theme_void() +
     ggtitle("Time-slopes for opioid overdose deaths") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+alldata_summarized_df %>% # population covariate coefficient
+    ggplot() +
+    geom_sf(aes(fill = deaths_pop_coeff, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Population covariate coefficient for opioid overdose deaths") +
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
 alldata_summarized_df %>% # intercepts
