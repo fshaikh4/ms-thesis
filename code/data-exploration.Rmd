@@ -427,22 +427,42 @@ alldata_df <- # merge edvisits and overdose deaths dataframes (and geography)
     )
 
 # additional processing: remove NAs, group data, and calculate slopes/intercepts
-alldata_summarized_df <- alldata_df %>%
+## opioid ED visits separately
+summarized_edvisits_models <- alldata_df %>%
     group_by(Locality) %>% # group data
-    filter(
-        !all(is.na(combined)), # remove county when ALL its rows are NA
-        !all(is.na(Deaths)) # remove county when ALL its rows are NA
-    ) %>%
-    summarize( # calculate slopes/intercepts
-        edvisits_timecoeff = coef(lm(combined ~ Year.adj))[[2]],
+    filter(!all(is.na(combined))) %>% # remove county when ALL its rows are NA
+    summarize( # calculate slopes/intercepts (double-check equation formulae)
         edvisits_intercept = coef(lm(combined ~ Year.adj))[[1]],
-        # edvisits_pop_coeff = coef(lm(combined ~ Year.adj))[[3]],
-        deaths_timecoeff = coef(lm(Deaths ~ Year.adj))[[2]],
-        deaths_intercept = coef(lm(Deaths ~ Year.adj))[[1]],
-        # deaths_pop_coeff = coef(lm(Deaths ~ Year.adj))[[3]]
+        edvisits_timecoeff = coef(lm(combined ~ Year.adj))[[2]]
+        # edvisits_pop_coeff = coef(lm(combined ~ Year.adj + Population))[[3]]
     ) %>%
     right_join(va_counties, by = c("Locality" = "NAMELSAD")) # merge-back
                                                              # removed counties
+
+## opioid overdose deaths separately
+death_problem_counties <- alldata_df %>% # problem counties for opioid overdose
+                                         # deaths have >5 non-NA values
+    group_by(Locality) %>%
+    summarize(sum_na = sum(is.na(Deaths))) %>% # how many NA in a county?
+    filter(sum_na > 5) %>%
+    .$Locality # print names of localities
+
+summarized_deaths_models <- alldata_df %>%
+    group_by(Locality) %>% # group data
+    filter(! Locality %in% death_problem_counties) %>%
+    summarize( #calculate slopes/intercepts (double-check equation formulae)
+        deaths_intercept = coef(lm(Deaths ~ Year.adj))[[1]],
+        deaths_timecoeff = coef(lm(Deaths ~ Year.adj))[[2]]
+        # deaths_pop_coeff = coef(lm(Deaths ~ Year.adj + Population))[[3]]
+    ) %>%
+    right_join(va_counties, by = c("Locality" = "NAMELSAD")) # merge-back
+                                                             # removed counties
+
+# re-merge data together into alldata_summarized_df
+alldata_summarized_df <- inner_join(
+    summarized_edvisits_models,
+    summarized_deaths_models
+)
 
 # plot slopes/intercepts for edvisits data
 alldata_summarized_df %>% # time-slopes
@@ -544,12 +564,12 @@ We also print an excerpt of `alldata_summarized` below, to show all coefficients
 alldata_summarized_df %>%
     select( # select only relevant variables for table display
         Locality,
+        edvisits_intercept,
         edvisits_timecoeff,
         # edvisits_pop_coeff,
-        edvisits_intercept,
-        deaths_timecoeff,
-        # deaths_pop_coeff,
-        deaths_intercept
+        deaths_intercept,
+        deaths_timecoeff
+        # deaths_pop_coeff
     ) %>%
     knitr::kable(style = "html")
 
@@ -557,16 +577,76 @@ alldata_summarized_df %>%
 alldata_summarized_df %>%
     select( # select only relevant variables for table display
         Locality,
+        edvisits_intercept,
         edvisits_timecoeff,
         # edvisits_pop_coeff,
-        edvisits_intercept,
-        deaths_timecoeff,
+        deaths_intercept,
+        deaths_timecoeff
         # deaths_pop_coeff,
-        deaths_intercept
     ) %>%
     na.exclude() %>%
     knitr::kable(style = "html")
 ```
+
+Below are the CDC WONDER opioid overdose deaths timeseries values for states that returned NA slopes from the opioid overdose deaths regressions:
+
+|County               | 2015| 2016| 2017| 2018| 2019| 2020| 2021|
+|:--------------------|----:|----:|----:|----:|----:|----:|----:|
+|ACCOMACK COUNTY      |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|ALLEGHANY COUNTY     |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|AMELIA COUNTY        |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|APPOMATTOX COUNTY    |   NA|   NA|    0|   NA|   NA|   NA|   NA|
+|AUGUSTA COUNTY       |   NA|   NA|   12|   NA|   NA|   NA|   NA|
+|BOTETOURT COUNTY     |   NA|   NA|   NA|   NA|   NA|   NA|   10|
+|BRUNSWICK COUNTY     |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|BUCHANAN COUNTY      |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|CAMPBELL COUNTY      |   NA|   NA|   NA|   NA|   NA|   11|   NA|
+|CARROLL COUNTY       |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|CHARLES CITY COUNTY  |   NA|   NA|   NA|   NA|   NA|    0|   NA|
+|CHARLOTTE COUNTY     |    0|   NA|   NA|   NA|   NA|   NA|   NA|
+|CLARKE COUNTY        |   NA|   NA|   NA|   NA|   NA|    0|   NA|
+|CUMBERLAND COUNTY    |   NA|   NA|   NA|    0|   NA|   NA|   NA|
+|DICKENSON COUNTY     |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|DINWIDDIE COUNTY     |   NA|    0|   NA|   NA|   NA|   NA|   NA|
+|FLUVANNA COUNTY      |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|GILES COUNTY         |   NA|   NA|   NA|    0|   NA|   NA|   NA|
+|GOOCHLAND COUNTY     |   NA|   NA|   NA|    0|   NA|   NA|   NA|
+|GREENE COUNTY        |   NA|    0|   NA|   NA|   NA|   NA|   NA|
+|HALIFAX COUNTY       |   NA|   NA|   NA|   NA|   NA|   NA|   15|
+|ISLE OF WIGHT COUNTY |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|JAMES CITY COUNTY    |   NA|   NA|   NA|   NA|   NA|   15|   NA|
+|KING WILLIAM COUNTY  |   NA|   NA|   NA|   NA|   NA|   NA|   10|
+|LEE COUNTY           |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|MADISON COUNTY       |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|MIDDLESEX COUNTY     |   NA|   NA|   NA|    0|   NA|   NA|   NA|
+|NEW KENT COUNTY      |   NA|    0|   NA|   NA|   NA|   NA|   NA|
+|NORTHAMPTON COUNTY   |    0|   NA|   NA|   NA|   NA|   NA|   NA|
+|PAGE COUNTY          |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|PATRICK COUNTY       |   NA|   NA|    0|   NA|   NA|   NA|   NA|
+|PRINCE EDWARD COUNTY |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|PRINCE GEORGE COUNTY |   NA|   NA|   NA|   NA|   NA|   NA|   12|
+|RICHMOND COUNTY      |   NA|    0|   NA|   NA|   NA|   NA|   NA|
+|ROCKBRIDGE COUNTY    |   NA|   NA|   NA|    0|   NA|   NA|   NA|
+|ROCKINGHAM COUNTY    |   NA|   NA|   NA|   NA|   NA|   12|   NA|
+|RUSSELL COUNTY       |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|SCOTT COUNTY         |   NA|   NA|    0|   NA|   NA|   NA|   NA|
+|SMYTH COUNTY         |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|SOUTHAMPTON COUNTY   |   NA|   NA|    0|   NA|   NA|   NA|   NA|
+|SUSSEX COUNTY        |    0|   NA|   NA|   NA|   NA|   NA|   NA|
+|WASHINGTON COUNTY    |   NA|   NA|   NA|   NA|   NA|   NA|   15|
+|WESTMORELAND COUNTY  |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|WYTHE COUNTY         |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|BRISTOL CITY         |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|CHARLOTTESVILLE CITY |   NA|   NA|   NA|   NA|   NA|   NA|   11|
+|DANVILLE CITY        |   NA|   NA|   NA|   NA|   NA|   10|   NA|
+|FAIRFAX CITY         |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|FRANKLIN CITY        |   NA|    0|   NA|   NA|   NA|   NA|   NA|
+|HARRISONBURG CITY    |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|MARTINSVILLE CITY    |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|SALEM CITY           |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|STAUNTON CITY        |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|WAYNESBORO CITY      |   NA|   NA|   NA|   NA|   NA|   NA|   NA|
+|WILLIAMSBURG CITY    |    0|   NA|   NA|   NA|   NA|   NA|   NA|
 
 # Remaining Action Items
 
