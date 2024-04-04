@@ -16,9 +16,9 @@ This document contains exploratory data analysis on opioid overdose data sources
 library(tidyverse)
 library(readxl)
 library(sf)
+library(broom)
 # library(stringr)
 # library(forecast)
-# library(broom)
 ```
 
 # Data Sources
@@ -420,6 +420,7 @@ alldata_df <- # merge edvisits and overdose deaths dataframes (and geography)
         va_counties,
         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
     ) %>%
+    filter(Year %in% 2015:2021) %>% # subset by desired years: 2015 to 2021
     mutate(
         Population = as.numeric(Population), # code Population as numeric
         Year.adj = Year - 2015 # create time-adjusted year value
@@ -427,8 +428,11 @@ alldata_df <- # merge edvisits and overdose deaths dataframes (and geography)
 
 # additional processing: remove NAs, group data, and calculate slopes/intercepts
 alldata_summarized_df <- alldata_df %>%
-    na.exclude() %>% # remove NAs
     group_by(Locality) %>% # group data
+    filter(
+        !all(is.na(combined)), # remove county when ALL its rows are NA
+        !all(is.na(Deaths)) # remove county when ALL its rows are NA
+    ) %>%
     summarize( # calculate slopes/intercepts
         edvisits_timecoeff = coef(lm(combined ~ Year.adj))[[2]],
         edvisits_intercept = coef(lm(combined ~ Year.adj))[[1]],
