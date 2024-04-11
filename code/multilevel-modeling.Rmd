@@ -1,0 +1,300 @@
+---
+title: Multilevel Modeling
+subtitle: Opioid overdose emergency department visits in Virginia counties.
+author: Faysal Shaikh
+date: Last updated `r format(Sys.Date(), "%B %d, %Y")`
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+---
+
+```{r load_relevant_packages, warning=F, message=F}
+library(tidyverse)
+library(readxl)
+library(sf)
+library(broom)
+# library(stringr)
+# library(forecast)
+```
+
+# Data Sources
+
+We are using [VDH county opioid overdose emergency department (ED) visits](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-surveillance/) data sources as our outcomes data.
+
+To further contextualize county opioid overdose ED visits, we also examine annual population estimates for Virginia counties as produced by the [UVA Weldon Cooper Center for Public Service ](https://www.coopercenter.org/virginia-population-estimates).
+
+We also include geographic data in a shapefile of 2023 Virginia Administrative Boundaries [obtained from the Virginia Geographic Information Network](https://vgin.vdem.virginia.gov/datasets/777890ecdb634d18a02eec604db522c6/about) for later use in exploratory chloropleth mapping.
+
+For relevant additional covariates and predictor measures of interest, we utilize the [County Health Rankings & Roadmaps dataset](https://www.countyhealthrankings.org/health-data/methodology-and-sources/data-documentation/national-data-documentation-2010-2022).
+
+We handle project directory and data source filepath specification immediately below, before performing data exploration on our 2 major data sources separately in the proceeding sections.  Notably, we also handle data source filepath specification for the aforementioned geographic data.
+
+```{r specify_data_paths}
+# path specification: data directory
+data_dir_path <- # uncomment appropriate option below
+    "d:/Codebase/ms-thesis/data/" # laptop
+    # "f:/Codebase/ms-thesis/data/" # desktop
+
+# filename specification: Virginia administrative boundaries shapefiles
+va_admin_bound_fname <-
+    "VirginiaAdministrativeBoundary.shp/VirginiaCounty.shp"
+
+# filename specification: overdose ED visits
+vdh_ed_visits_fname <-
+    "Drug-Overdose-ED-Visits_Virginia-January-2024.xlsx"
+
+# filename specification: county population estimates
+va_popest_2010_2020_fname <-
+    "VA-Intercensal-Estimates_2010-2020_UVA-CooperCenter_Updated-2023-01.xlsx"
+va_popest_2020_2023_fname <-
+    "VA-Intercensal-Estimates_2020-2023_UVA-CooperCenter.xlsx"
+
+# filename specification: County Health Rankings & Roadmaps ("CHR") data
+chr_2015_fname <-
+    "2015 County Health Rankings Data - v3.xls"
+chr_2016_fname <-
+    "2016 County Health Rankings Data - v3.xls"
+chr_2017_fname <-
+    "2017CountyHealthRankingsData.xls"
+chr_2018_fname <-
+    "2018 County Health Rankings Data - v2.xls"
+chr_2019_fname <-
+    "2019 County Health Rankings Data - v3.xls"
+chr_2020_fname <-
+    "2020 County Health Rankings Data - v2.xlsx"
+chr_2021_fname <-
+    "2021 County Health Rankings Data - v1.xlsx"
+chr_2022_fname <-
+    "2022 County Health Rankings Data - v1.xlsx"
+chr_2023_fname <-
+    "2023 County Health Rankings Data - v2.xlsx"
+```
+
+## Geography of Virginia Counties
+
+This project examines data on Virginia counties as the primary units of analysis.  As a geographic reference, we include below a labeled map of Virginia counties obtained from [the Virginia Association of Counties (VACO) website](https://www.vaco.org/about/regions/):
+
+![](https://www.vaco.org/wp-content/uploads/2023/04/VACoRegionMap23TransparentReduced.png)
+
+Similarly, we generate our own map of Virginia counties and county-equivalents via the previously mentioned 2023 Virginia Administrative Boundaries shapefile, visualized without additional data below:
+
+```{r read_shapefile}
+va_counties <- # read shapefile
+    st_read(paste0(data_dir_path, va_admin_bound_fname)) %>%
+    mutate(NAMELSAD = str_to_upper(NAMELSAD)) # uppercase names to avoid
+                                              # capitalization merge conflicts
+
+# plot geographic data
+va_counties %>%
+    ggplot() +
+    geom_sf() +
+    theme_void()
+```
+
+We will use this template as the basis for chloropleth exploratory data visualizations throughout this process.
+
+## Opioid Overdose ED Visits in Virginia Counties
+
+We utilize the Virginia Department of Health website to download data on unintentional drug overdose.  Data are in the form of a Microsoft Excel workbook and are loaded-in via the below chunk:
+
+```{r read_vdh_ed_visits_data, message=F, warning=F}
+# preparation for reading-in data: VDH opioid overdose ED visits
+vdh_ed_visits_fullpath <-
+    paste0(data_dir_path, vdh_ed_visits_fname) # precombine fname parts
+vdh_ed_visits_sheetslist <-
+    excel_sheets(vdh_ed_visits_fullpath) # get list of worksheet "tabs" for MS
+                                         # Excel workbook file to mask for
+                                         # specific sheet(s)
+
+# reading-in data: VDH opioid overdose ED visits
+vdh_ed_visits_nonheroin_opioid <- read_excel(
+    path = vdh_ed_visits_fullpath,
+    sheet = vdh_ed_visits_sheetslist[5] # locality opioid
+)
+vdh_ed_visits_heroin <- read_excel(
+    path = vdh_ed_visits_fullpath,
+    sheet = vdh_ed_visits_sheetslist[6] # locality heroin
+)
+
+## output data: nonheroin opioid ED visits
+dates_vec <- # derived years date-vector for time masking (as-needed)
+    2015:2023 %>%
+    paste("Total") # Year "Total"
+
+vdh_localities_df <- # derived data frame for geographic masking (as-needed)
+    vdh_ed_visits_nonheroin_opioid["OPIOID"][-1, ] %>%
+    rename("Locality" = "OPIOID") %>%
+    lapply(
+        function(x) str_replace_all(x, "[^a-zA-Z0-9 ]", "") # remove special
+                                                            # characters (i.e.,
+                                                            # double-dagger)
+    ) %>%
+    as.data.frame() %>%
+    mutate(Locality = str_to_upper(Locality)) # avoid name case issues for merge
+
+nonheroin_wide <- # nonheroin opioid ED visits (wide format)
+    vdh_localities_df %>%
+    cbind(vdh_ed_visits_nonheroin_opioid[dates_vec][-1, ]) %>%
+    mutate(across(-Locality, as.numeric)) # convert non-labels to numeric
+
+nonheroin_tslist <- # nonheroin opioid ED visit ts objects stored in named list
+    sapply(
+        vdh_localities_df[, ],
+        function(x) {
+            nonheroin_wide[nonheroin_wide["Locality"] == x][2:110] %>%
+                as.numeric() %>%
+                ts(start = 2015, end = 2023, frequency = 1) # ensure this is
+                                                            # updated to match
+                                                            # the data timeframe
+        },
+        simplify = FALSE, USE.NAMES = TRUE
+    )
+
+nonheroin_opioid_edvisits_df <-
+    nonheroin_wide %>%
+    pivot_longer(
+        cols = dates_vec,
+        names_to = "Year", # ensure this is updated to match the data timeframe
+        values_to = "Count: Nonheroin Opioid ED Visits"
+    ) %>%
+    mutate(`Count: Nonheroin Opioid ED Visits` =
+        as.numeric(`Count: Nonheroin Opioid ED Visits`)
+    )
+
+## output data: heroin (opioid) ED visits
+heroin_wide <- # heroin ED visits (wide format)
+    vdh_localities_df %>%
+    cbind(vdh_ed_visits_heroin[dates_vec][-1, ]) %>%
+    mutate(across(-Locality, as.numeric)) # convert non-labels to numeric
+
+heroin_edvisits_ts_list <- # heroin ED visit ts objects stored in named list
+    sapply(
+        vdh_localities_df[, ],
+        function(x) {
+            heroin_wide[heroin_wide["Locality"] == x][2:110] %>%
+            as.numeric() %>%
+            ts(start = 2015, end = 2023, frequency = 1)
+        }, # ensure this is updated to the data
+    simplify = FALSE, USE.NAMES = TRUE
+    )
+
+heroin_edvisits_df <-
+    heroin_wide %>%
+    pivot_longer(
+        cols = dates_vec,
+        names_to = "Year", # ensure this is updated to match the data timeframe
+        values_to = "Count: Heroin ED Visits"
+    ) %>%
+    mutate(`Count: Heroin ED Visits` =
+        as.numeric(`Count: Heroin ED Visits`)
+    )
+
+## output data: combined ED visits [heroin (opioid) + nonheroin opioid]
+combined_edvisits_df <-
+    inner_join(heroin_edvisits_df, nonheroin_opioid_edvisits_df) %>%
+    group_by(Locality, Year) %>%
+    rename(
+        heroin = `Count: Heroin ED Visits`,
+        nonheroin_opioid = `Count: Nonheroin Opioid ED Visits`
+    ) %>%
+    mutate(
+        Year = as.numeric(str_sub(Year, end = -6)), # ensure this is updated to
+                                                    # match the data timeframe
+        combined = sum(c(heroin, nonheroin_opioid)),
+    )
+
+# print data in wide format as an HTML table
+bind_rows(
+    nonheroin_wide,
+    heroin_wide
+) %>%
+    group_by(Locality) %>%
+    summarize_all(sum) %>%
+    knitr::kable(style = "html")
+```
+
+According to VDH criteria, [opioid data seems to exclude "heroin"](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-case-definition/#:~:text=medication%20or%20drug%2C-,heroin,-%2C%20dope%2C%20speed%20ball) ICD codes.  Experts believe heroin opioid overdose deaths have plateaued in the wake of the latest wave(s) of the opioid epidemic, driven now heavily by synthetic opioids such as fentanyl.
+
+However, our preliminary exploratory data analysis shows that heroin overdose ED visits in fact continue to contribute to the overall trends in opioid overdose ED visits, so we explore opioid overdose ED visits for all opioids including heroin.
+
+## Population Estimates for Virginia Counties
+
+We contextualize the county opioid overdose ED visits number with the county's population by incorporating annual county population estimates from UVA's Weldon Cooper Center for Public Service from 2015 to 2023.  We first read-in the data below, before merging it with the ED visits data above (`combined_edvisits_df`).
+
+```{r read_merge_popest_data}
+# preparation for reading-in data: VA county population estimates
+va_popest_2010_2020_fullpath <-
+    paste0(data_dir_path, va_popest_2010_2020_fname) # precombine fname parts
+va_popest_2020_2023_fullpath <-
+    paste0(data_dir_path, va_popest_2020_2023_fname) # precombine fname parts
+
+# reading-in data: VA county population estimates
+va_popest_2010_2020 <- read_excel(
+    path = va_popest_2010_2020_fullpath,
+    skip = 4 # start at county estimates
+) %>%
+    rename(
+        idx = 1,
+        Locality = 2,
+        `2010_census` = 3
+    ) %>%
+    select(Locality, as.character(2010:2019)) %>%
+    na.omit() %>%
+    pivot_longer( # change from wide to long format
+        cols = as.character(2010:2019),
+        names_to = "Year",
+        values_to = "annual_popest",
+    ) %>%
+    mutate(
+        Locality = str_to_upper(Locality),
+        Year = as.numeric(Year)
+    )
+
+va_popest_2020_2023 <- read_excel(
+    path = va_popest_2020_2023_fullpath,
+    skip = 4 # start at county estimates
+) %>%
+    rename(
+        idx = 1,
+        Locality = 2,
+        `2020_census` = 3
+    ) %>%
+    select(Locality, as.character(2020:2023)) %>%
+    na.omit() %>%
+    pivot_longer( # change from wide to long format
+        cols = as.character(2020:2023),
+        names_to = "Year",
+        values_to = "annual_popest",
+    ) %>%
+    mutate(
+        Locality = str_to_upper(Locality),
+        Year = as.numeric(Year)
+    )
+
+# merge 2010_2020 and 2020_2023 together (2010_2023)
+va_popest_2010_2023 <- bind_rows(
+    va_popest_2010_2020,
+    va_popest_2020_2023
+) %>%
+    group_by(Locality)
+
+# merge into combined_edvisits_df
+combined_edvisits_df <- combined_edvisits_df %>%
+    left_join(va_popest_2010_2023)
+```
+
+## National County Health Rankings & Roadmaps Data
+
+To-be-completed.
+
+```{r read_process_chr_data}
+```
+
+Since there is so much data, we will merge in a separate chunk.
+
+```{r merge_chr_data}
+```
+
+At this point, we have all relevant data collected into a single data frame, and we can proceed with our analyses.
