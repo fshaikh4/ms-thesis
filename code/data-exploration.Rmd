@@ -50,7 +50,7 @@ cdc_overdose_deaths_18_21_fname <-
     "cdc-wonder_final-mcd_2018-2021.tsv" # 2018-2021 final
 
 # filename specification: Virginia administrative boundaries shapefiles
-va_admin_bound <-
+va_admin_bound_fname <-
     "VirginiaAdministrativeBoundary.shp/VirginiaCounty.shp"
 ```
 
@@ -64,7 +64,7 @@ Similarly, we generate our own map of Virginia counties and county-equivalents v
 
 ```{r read_shapefile}
 va_counties <- # read shapefile
-    st_read(paste0(data_dir_path, va_admin_bound)) %>%
+    st_read(paste0(data_dir_path, va_admin_bound_fname)) %>%
     mutate(NAMELSAD = str_to_upper(NAMELSAD)) # uppercase names to avoid
                                               # capitalization merge conflicts
 
