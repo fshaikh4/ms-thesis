@@ -16,6 +16,7 @@ library(readxl)
 library(sf)
 library(broom)
 library(nlme)
+# library(lme4)
 # library(stringr)
 # library(forecast)
 ```
@@ -409,6 +410,7 @@ Our first model, referred to as an "Unconditional Growth" model, consists of mai
 # model 1 with counts
 model_1_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
+    filter(Year %in% 2016:2021) %>% # match w/ publication
     lme(
         fixed = combined ~ 1,
         random = ~ 1 | Locality
@@ -419,6 +421,7 @@ summary(model_1_counts)
 # model 1 with rates
 model_1_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
+    filter(Year %in% 2016:2021) %>% # match w/ publication
     lme(
         fixed = combined_rate_per_100k ~ 1,
         random = ~ 1 | Locality
@@ -478,7 +481,8 @@ Our second model, referred to as a "Fixed Growth" model, consists of main and ra
 # model 2 with counts
 model_2_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2016) %>% # for interpretation
     lme(
         fixed = combined ~ Year.adj,
         random = ~ 1 | Locality
@@ -489,7 +493,8 @@ summary(model_2_counts)
 # model 2 with rates
 model_2_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2016) %>% # for interpretation
     lme(
         fixed = combined_rate_per_100k ~ Year.adj,
         random = ~ 1 | Locality
@@ -548,7 +553,8 @@ Our third model, referred to as a "Random Growth" model, consists of main and ra
 # model 3 with counts
 model_3_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2016) %>% # for interpretation
     lme(
         fixed = combined ~ Year.adj,
         random = ~ Year.adj | Locality
@@ -559,7 +565,8 @@ summary(model_3_counts)
 # model 3 with rates
 model_3_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2016) %>% # for interpretation
     lme(
         fixed = combined_rate_per_100k ~ Year.adj,
         random = ~ Year.adj | Locality
