@@ -427,6 +427,48 @@ model_1_rates <- combined_edvisits_df %>%
 summary(model_1_rates)
 ```
 
+```{r plot_model_1_random_effects}
+ranef(model_1_counts) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() + 
+    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random intercepts for opioid overdose ED visit counts") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+
+ranef(model_1_rates) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() + 
+    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random intercepts for opioid overdose ED visit rates") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+```
 
 ## "Fixed Growth" Model
 
@@ -475,6 +517,26 @@ ranef(model_2_counts) %>%
     ) +
     theme_void() +
     ggtitle("Random intercepts for opioid overdose ED visit counts") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+ranef(model_2_rates) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() + 
+    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random intercepts for opioid overdose ED visit rates") +
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 ```
 
@@ -547,6 +609,46 @@ ranef(model_3_counts) %>%
     ) +
     theme_void() +
     ggtitle("Random yearslopes for opioid overdose ED visit counts") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+ranef(model_3_rates) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() + 
+    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random intercepts for opioid overdose ED visit rates") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+ranef(model_3_rates) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() +
+    geom_sf(aes(fill = `Year.adj`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random yearslopes for opioid overdose ED visit rates") +
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 ```
 
