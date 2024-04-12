@@ -20,6 +20,11 @@ library(nlme)
 # library(forecast)
 ```
 
+```{r prelim_config, echo=F}
+options(scipen = 10000)
+set.seed(667)
+```
+
 # Data Sources
 
 We are using [VDH county opioid overdose emergency department (ED) visits](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-surveillance/) data sources as our outcomes data.
@@ -219,7 +224,23 @@ combined_edvisits_df <-
         Year = as.numeric(str_sub(Year, end = -6)), # ensure this is updated to
                                                     # match the data timeframe
         combined = sum(c(heroin, nonheroin_opioid)),
+    ) %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
     )
+
+# visualize combined ED visits
+combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    ggplot(aes(x = Year, y = combined, color = Locality)) +
+    geom_point() +
+    geom_line() +
+    theme_classic() +
+    theme(legend.position = "none") +
+    ggtitle("Combined ED visits over time by county") +
+    ylab("Combined (including heroin) \n opioid overdose ED visits") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
 # print data in wide format as an HTML table
 bind_rows(
@@ -299,6 +320,29 @@ va_popest_2010_2023 <- bind_rows(
 # merge into combined_edvisits_df
 combined_edvisits_df <- combined_edvisits_df %>%
     left_join(va_popest_2010_2023)
+
+# visualize popest values
+combined_edvisits_df %>% # just exclude VA state this time
+    filter(Locality != "VIRGINIA") %>%
+    ggplot(aes(x = Year, y = annual_popest, color = Locality)) +
+    geom_point() +
+    geom_line() +
+    theme_classic() +
+    theme(legend.position = "none") +
+    ggtitle("Population estimates over time by county") +
+    ylab("Annual population estimate") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+combined_edvisits_df %>% # now exclude Fairfax County as well
+    filter(! Locality %in%  c("VIRGINIA", "FAIRFAX COUNTY")) %>%
+    ggplot(aes(x = Year, y = annual_popest, color = Locality)) +
+    geom_point() +
+    geom_line() +
+    theme_classic() +
+    theme(legend.position = "none") +
+    ggtitle("Population estimates over time by county\n(excluding Fairfax County)") +
+    ylab("Annual population estimate") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 ```
 
 ### Calculate opioid overdose ED visit rates per 100K
@@ -319,6 +363,18 @@ combined_edvisits_df %>%
     group_by(Locality) %>%
     summarize_all(sum) %>%
     knitr::kable(style = "html")
+
+# visualize ED visit rate per 100k values
+combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    ggplot(aes(x = Year, y = combined_rate_per_100k, color = Locality)) +
+    geom_point() +
+    geom_line() +
+    theme_classic() +
+    theme(legend.position = "none") +
+    ggtitle("ED visit rates over time by county") +
+    ylab("ED visit rates per 100K population") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 ```
 
 These opioid overdose ED visit rates per 100,000 population will serve as our primary outcome measure for our analyses.
@@ -336,3 +392,167 @@ Since there is so much data, we will merge in a separate chunk.
 ```
 
 At this point, we have all relevant data collected into a single data frame, and we can proceed with our analyses.
+
+# Multilevel Modeling
+
+We utilize the following equation for our fully-specified model:
+
+$$y_{i,t} = (\beta_0 + \gamma_{0,i}) + (\beta_{Yr} + \gamma_{Yr,i}) \cdot Year + \beta_{HB} \cdot HealthBehaviors + \beta_{SEF} \cdot SocialEconomicFactors + \beta_{PE} \cdot PhysicalEnvironment$$
+
+Some of our lesser-specified models will omit main/random effects of time (slopes) and also main effects of time-varying covariates.
+
+## "Unconditional Growth" Model
+
+Our first model, referred to as an "Unconditional Growth" model, consists of main and random effects for intercept, but nothing else.
+
+```{r unconditional_growth_model}
+# model 1 with counts
+model_1_counts <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    lme(
+        fixed = combined ~ 1,
+        random = ~ 1 | Locality
+    )
+
+summary(model_1_counts)
+
+# model 1 with rates
+model_1_rates <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    lme(
+        fixed = combined_rate_per_100k ~ 1,
+        random = ~ 1 | Locality
+    )
+
+summary(model_1_rates)
+```
+
+
+## "Fixed Growth" Model
+
+Our second model, referred to as a "Fixed Growth" model, consists of main and random effects for intercept but only a main effect of time.
+
+```{r fixed_growth_model}
+# model 2 with counts
+model_2_counts <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    lme(
+        fixed = combined ~ Year.adj,
+        random = ~ 1 | Locality
+    )
+
+summary(model_2_counts)
+
+# model 2 with rates
+model_2_rates <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    lme(
+        fixed = combined_rate_per_100k ~ Year.adj,
+        random = ~ 1 | Locality
+    )
+
+summary(model_2_rates)
+```
+
+```{r plot_model_2_random_effects}
+ranef(model_2_counts) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() + 
+    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random intercepts for opioid overdose ED visit counts") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+```
+
+## "Random Growth" Model
+
+Our third model, referred to as a "Random Growth" model, consists of main and random effects for both intercept and time.
+
+```{r random_growth_model}
+# model 3 with counts
+model_3_counts <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    lme(
+        fixed = combined ~ Year.adj,
+        random = ~ Year.adj | Locality
+    )
+
+summary(model_3_counts)
+
+# model 3 with rates
+model_3_rates <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
+    lme(
+        fixed = combined_rate_per_100k ~ Year.adj,
+        random = ~ Year.adj | Locality
+    )
+
+summary(model_3_rates)
+```
+
+### Plot model outputs
+
+```{r plot_model_3_random_effects}
+ranef(model_3_counts) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() + 
+    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random intercepts for opioid overdose ED visit counts") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+ranef(model_3_counts) %>%
+    rownames_to_column(var = "Locality") %>%
+    left_join( # combine above with geography
+        va_counties,
+        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+    ) %>%
+    ggplot() +
+    geom_sf(aes(fill = `Year.adj`, geometry = geometry)) +
+    scale_fill_gradient2( # ggplot2 3.3.5 syntax
+        midpoint = 0,
+        high = "blue",
+        mid = "white",
+        low = "red",
+        na.value = "black",
+        guide = "colorbar"
+    ) +
+    theme_void() +
+    ggtitle("Random yearslopes for opioid overdose ED visit counts") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+```
+
+## "Random Growth with Time-Varying Covariates" Model
+
+Our final model, referred to as a "Random Growth" model with time-varying covariates (TVCs), consists of main and random effects for both intercept and time as well as main effects for each of our 4 TVCs, taken from CHR data: Health Behaviors, Clinical Care, Social & Economic Factors, and Physical Environment.
+
+```{r random_growth_with_TVCs_model}
+```
