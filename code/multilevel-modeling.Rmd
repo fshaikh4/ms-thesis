@@ -15,6 +15,7 @@ library(tidyverse)
 library(readxl)
 library(sf)
 library(broom)
+library(nlme)
 # library(stringr)
 # library(forecast)
 ```
@@ -25,7 +26,7 @@ We are using [VDH county opioid overdose emergency department (ED) visits](https
 
 To further contextualize county opioid overdose ED visits, we also examine annual population estimates for Virginia counties as produced by the [UVA Weldon Cooper Center for Public Service ](https://www.coopercenter.org/virginia-population-estimates).
 
-We also include geographic data in a shapefile of 2023 Virginia Administrative Boundaries [obtained from the Virginia Geographic Information Network](https://vgin.vdem.virginia.gov/datasets/777890ecdb634d18a02eec604db522c6/about) for later use in exploratory chloropleth mapping.
+We also include geographic data in a shapefile of 2023 Virginia Administrative Boundaries [obtained from the Virginia Geographic Information Network](https://vgin.vdem.virginia.gov/datasets/777890ecdb634d18a02eec604db522c6/about) for later use in exploratory chloropleth mapping.  This shapefile visually represents adjacent counties, but is not by itself in a form accessible to code and implement spatial autocorrelation in our modeling.  Thus, we utilize the [2023 Census Bureau County Adjacency File](https://www.census.gov/geographies/reference-files/time-series/geo/county-adjacency.html) for this purpose (though we are only interested in Virginia counties).
 
 For relevant additional covariates and predictor measures of interest, we utilize the [County Health Rankings & Roadmaps dataset](https://www.countyhealthrankings.org/health-data/methodology-and-sources/data-documentation/national-data-documentation-2010-2022).
 
@@ -40,6 +41,10 @@ data_dir_path <- # uncomment appropriate option below
 # filename specification: Virginia administrative boundaries shapefiles
 va_admin_bound_fname <-
     "VirginiaAdministrativeBoundary.shp/VirginiaCounty.shp"
+
+# filename specification: US County Adjacency File
+county_adjacency_fname <-
+    "county_adjacency2023.txt"
 
 # filename specification: overdose ED visits
 vdh_ed_visits_fname <-
@@ -78,6 +83,8 @@ This project examines data on Virginia counties as the primary units of analysis
 
 ![](https://www.vaco.org/wp-content/uploads/2023/04/VACoRegionMap23TransparentReduced.png)
 
+### Virginia counties shapefile
+
 Similarly, we generate our own map of Virginia counties and county-equivalents via the previously mentioned 2023 Virginia Administrative Boundaries shapefile, visualized without additional data below:
 
 ```{r read_shapefile}
@@ -94,6 +101,15 @@ va_counties %>%
 ```
 
 We will use this template as the basis for chloropleth exploratory data visualizations throughout this process.
+
+### Virginia county adjacencies
+
+We additionaly read-in the US Census Bureau's County Adjacency File and subset to only include Virginia counties.
+
+```{r read_county_adjacency_file}
+```
+
+We use this spatial information to later specify spatial autocorrelation in our model.
 
 ## Opioid Overdose ED Visits in Virginia Counties
 
@@ -284,6 +300,28 @@ va_popest_2010_2023 <- bind_rows(
 combined_edvisits_df <- combined_edvisits_df %>%
     left_join(va_popest_2010_2023)
 ```
+
+### Calculate opioid overdose ED visit rates per 100K
+
+We use data from VDH for opioid overdose ED visits in conjunction with data from UVA population estimates to transform opioid overdose ED visit counts into rates per 100K population.
+
+```{r calc_ed_visit_rates_per_capita}
+combined_edvisits_df <- combined_edvisits_df %>%
+    mutate(combined_rate_per_100k = (combined / annual_popest) * 100000)
+
+# print in wide format to HTML table
+combined_edvisits_df %>%
+    select(Locality, Year, combined_rate_per_100k) %>%
+    pivot_wider(
+        names_from = Year,
+        values_from = combined_rate_per_100k
+    ) %>%
+    group_by(Locality) %>%
+    summarize_all(sum) %>%
+    knitr::kable(style = "html")
+```
+
+These opioid overdose ED visit rates per 100,000 population will serve as our primary outcome measure for our analyses.
 
 ## National County Health Rankings & Roadmaps Data
 
