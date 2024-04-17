@@ -41,8 +41,8 @@ We handle project directory and data source filepath specification immediately b
 ```{r specify_data_paths}
 # path specification: data directory
 data_dir_path <- # uncomment appropriate option below
-    "d:/Codebase/ms-thesis/data/" # laptop
-    # "f:/Codebase/ms-thesis/data/" # desktop
+    # "d:/Codebase/ms-thesis/data/" # laptop
+    "f:/Codebase/ms-thesis/data/" # desktop
 
 # filename specification: Virginia administrative boundaries shapefiles
 va_admin_bound_fname <-
@@ -352,7 +352,11 @@ We use data from VDH for opioid overdose ED visits in conjunction with data from
 
 ```{r calc_ed_visit_rates_per_capita}
 combined_edvisits_df <- combined_edvisits_df %>%
-    mutate(combined_rate_per_100k = (combined / annual_popest) * 100000)
+    mutate(
+        combined_rate_per_100k = (combined / annual_popest) * (10**6),
+        heroin_rate_per_100k = (heroin / annual_popest) * (10**6),
+        nonheroin_opioid_rate_per_100k = (nonheroin_opioid / annual_popest) * (10**6)
+    )
 
 # print in wide format to HTML table
 combined_edvisits_df %>%
@@ -411,10 +415,13 @@ Our first model, referred to as an "Unconditional Growth" model, consists of mai
 model_1_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
     filter(Year %in% 2016:2021) %>% # match w/ publication
-    lme(
+    lme( # nlme implementation
         fixed = combined ~ 1,
         random = ~ 1 | Locality
     )
+    # lmer( # lme4 implementation
+    #     formula = combined ~ (1 | Locality)
+    # )
 
 summary(model_1_counts)
 
@@ -422,10 +429,13 @@ summary(model_1_counts)
 model_1_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
     filter(Year %in% 2016:2021) %>% # match w/ publication
-    lme(
+    lme( # nlme implementation
         fixed = combined_rate_per_100k ~ 1,
         random = ~ 1 | Locality
     )
+    # lmer( # lme4 implementation
+    #     formula = combined_rate_per_100k ~ (1 | Locality),
+    # )
 
 summary(model_1_rates)
 ```
