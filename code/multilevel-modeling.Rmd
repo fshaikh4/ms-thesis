@@ -64,23 +64,23 @@ va_popest_2020_2023_fname <-
 
 # filename specification: County Health Rankings & Roadmaps ("CHR") data
 chr_2015_fname <-
-    "2015 County Health Rankings Data - v3.xls"
+    "2015 County Health Rankings Virginia Data - v3.xls"
 chr_2016_fname <-
-    "2016 County Health Rankings Data - v3.xls"
+    "2016 County Health Rankings Virginia Data - v3.xls"
 chr_2017_fname <-
-    "2017CountyHealthRankingsData.xls"
+    "2017 County Health Rankings Virginia Data - v2.xls"
 chr_2018_fname <-
-    "2018 County Health Rankings Data - v2.xls"
+    "2018 County Health Rankings Virginia Data - v3.xls"
 chr_2019_fname <-
-    "2019 County Health Rankings Data - v3.xls"
+    "2019 County Health Rankings Virginia Data - v1_0.xls"
 chr_2020_fname <-
-    "2020 County Health Rankings Data - v2.xlsx"
+    "2020 County Health Rankings Virginia Data - v1_0.xlsx"
 chr_2021_fname <-
-    "2021 County Health Rankings Data - v1.xlsx"
+    "2021 County Health Rankings Virginia Data - v1_0.xlsx"
 chr_2022_fname <-
-    "2022 County Health Rankings Data - v1.xlsx"
+    "2022 County Health Rankings Virginia Data - v2.xlsx"
 chr_2023_fname <-
-    "2023 County Health Rankings Data - v2.xlsx"
+    "2023 County Health Rankings Virginia Data - v3.xlsx"
 ```
 
 ## Geography of Virginia Counties
