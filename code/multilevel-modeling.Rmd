@@ -63,24 +63,17 @@ va_popest_2020_2023_fname <-
     "VA-Intercensal-Estimates_2020-2023_UVA-CooperCenter.xlsx"
 
 # filename specification: County Health Rankings & Roadmaps ("CHR") data
-chr_2015_fname <-
-    "2015 County Health Rankings Virginia Data - v3.xls"
-chr_2016_fname <-
-    "2016 County Health Rankings Virginia Data - v3.xls"
-chr_2017_fname <-
-    "2017 County Health Rankings Virginia Data - v2.xls"
-chr_2018_fname <-
-    "2018 County Health Rankings Virginia Data - v3.xls"
-chr_2019_fname <-
-    "2019 County Health Rankings Virginia Data - v1_0.xls"
-chr_2020_fname <-
-    "2020 County Health Rankings Virginia Data - v1_0.xlsx"
-chr_2021_fname <-
-    "2021 County Health Rankings Virginia Data - v1_0.xlsx"
-chr_2022_fname <-
-    "2022 County Health Rankings Virginia Data - v2.xlsx"
-chr_2023_fname <-
-    "2023 County Health Rankings Virginia Data - v3.xlsx"
+chr_fnames <- list(
+    "2015" = "2015 County Health Rankings Virginia Data - v3.xls",
+    "2016" = "2016 County Health Rankings Virginia Data - v3.xls",
+    "2017" = "2017 County Health Rankings Virginia Data - v2.xls",
+    "2018" = "2018 County Health Rankings Virginia Data - v3.xls",
+    "2019" = "2019 County Health Rankings Virginia Data - v1_0.xls",
+    "2020" = "2020 County Health Rankings Virginia Data - v1_0.xlsx",
+    "2021" = "2021 County Health Rankings Virginia Data - v1_0.xlsx",
+    "2022" = "2022 County Health Rankings Virginia Data - v2.xlsx",
+    "2023" = "2023 County Health Rankings Virginia Data - v3.xlsx"
+)
 ```
 
 ## Geography of Virginia Counties
@@ -146,8 +139,10 @@ dates_vec <- # derived years date-vector for time masking (as-needed)
     paste("Total") # Year "Total"
 
 vdh_localities_df <- # derived data frame for geographic masking (as-needed)
-    vdh_ed_visits_nonheroin_opioid["OPIOID"][-1, ] %>%
-    rename("Locality" = "OPIOID") %>%
+    vdh_ed_visits_nonheroin_opioid %>%
+    select("OPIOID", "...2") %>%
+    slice(-1) %>% # remove first non-data row
+    rename("Locality" = "OPIOID", "FIPS" = "...2") %>%
     lapply(
         function(x) str_replace_all(x, "[^a-zA-Z0-9 ]", "") # remove special
                                                             # characters (i.e.,
@@ -225,6 +220,7 @@ combined_edvisits_df <-
         Year = as.numeric(str_sub(Year, end = -6)), # ensure this is updated to
                                                     # match the data timeframe
         combined = sum(c(heroin, nonheroin_opioid)),
+        FIPS = as.character(FIPS) # fix treatment of FIPS as double
     ) %>%
     left_join( # combine above with geography
         va_counties,
@@ -389,11 +385,58 @@ These opioid overdose ED visit rates per 100,000 population will serve as our pr
 To-be-completed.
 
 ```{r read_process_chr_data}
+chr_data_collector <- data.frame(
+    Locality_shortname = character(),
+    `Health Behaviors` = numeric(),
+    `Clinical Care` = numeric(),
+    `Social & Economic Factors` = numeric(),
+    `Physical Environment` = numeric()
+)
+
+for (chosen_year in 2015:2023) {
+    chosen_chr_fname <- chr_fnames[as.character(chosen_year)]
+    chosen_chr_fullpath <- paste0(data_dir_path, chosen_chr_fname)
+    chosen_chr_sheetslist <- excel_sheets(chosen_chr_fullpath)
+
+    chosen_chr_raw_data <- read_excel(
+        path = chosen_chr_fullpath,
+        sheet = chosen_chr_sheetslist[3] # Outcomes & Factors SubRankings
+    ) %>%
+        select(
+            `...1`,
+            `Health Behaviors`,
+            `Clinical Care`,
+            `Social & Economic Factors`,
+            `Physical Environment`
+        ) %>%
+        rename("FIPS" = `...1`) %>%
+        slice(-1:-2) %>% # remove first 2 non-data rows
+        mutate(
+            "Year" = as.numeric(chosen_year),
+            `Health Behaviors` = as.numeric(`Health Behaviors`),
+            `Clinical Care` = as.numeric(`Clinical Care`),
+            `Social & Economic Factors` = as.numeric(`Social & Economic Factors`),
+            `Physical Environment` = as.numeric(`Physical Environment`)
+        )
+
+    chr_data_collector <- chr_data_collector %>%
+        rbind(chosen_chr_raw_data)
+}
 ```
 
 Since there is so much data, we will merge in a separate chunk.
 
 ```{r merge_chr_data}
+combined_edvisits_df <- combined_edvisits_df %>%
+    left_join(chr_data_collector, by = c("FIPS", "Year"))
+    
+combined_edvisits_df <- combined_edvisits_df %>% # need to be separate from above for some reason
+    rename(
+        "zHB" = "Health Behaviors",
+        "zCC" = "Clinical Care",
+        "zSEF" = "Social & Economic Factors",
+        "zPE" = "Physical Environment"
+    )
 ```
 
 At this point, we have all relevant data collected into a single data frame, and we can proceed with our analyses.
@@ -447,7 +490,7 @@ ranef(model_1_counts) %>%
         va_counties,
         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
     ) %>%
-    ggplot() + 
+    ggplot() +
     geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
     scale_fill_gradient2( # ggplot2 3.3.5 syntax
         midpoint = 0,
@@ -578,7 +621,7 @@ model_3_rates <- combined_edvisits_df %>%
     filter(Year %in% 2016:2021) %>% # match w/ publication
     mutate(Year.adj = Year - 2016) %>% # for interpretation
     lme(
-        fixed = combined_rate_per_100k ~ Year.adj,
+        fixed = nonheroin_opioid_rate_per_100k ~ Year.adj,
         random = ~ Year.adj | Locality
     )
 
@@ -674,4 +717,27 @@ ranef(model_3_rates) %>%
 Our final model, referred to as a "Random Growth" model with time-varying covariates (TVCs), consists of main and random effects for both intercept and time as well as main effects for each of our 4 TVCs, taken from CHR data: Health Behaviors, Clinical Care, Social & Economic Factors, and Physical Environment.
 
 ```{r random_growth_with_TVCs_model}
+# model 4 with counts
+model_4_counts <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    lme(
+        fixed = combined ~ Year.adj + zHB + zCC + zSEF + zPE,
+        random = ~ Year.adj | Locality
+    )
+
+summary(model_4_counts)
+
+# model 4 with rates
+model_4_rates <- combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    lme(
+        fixed = combined_rate_per_100k ~ Year.adj + zHB + zCC + zSEF + zPE,
+        random = ~ Year.adj | Locality
+    )
+
+summary(model_4_rates)
 ```
