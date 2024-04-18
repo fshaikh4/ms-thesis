@@ -353,9 +353,9 @@ We use data from VDH for opioid overdose ED visits in conjunction with data from
 ```{r calc_ed_visit_rates_per_capita}
 combined_edvisits_df <- combined_edvisits_df %>%
     mutate(
-        combined_rate_per_100k = (combined / annual_popest) * (10**6),
-        heroin_rate_per_100k = (heroin / annual_popest) * (10**6),
-        nonheroin_opioid_rate_per_100k = (nonheroin_opioid / annual_popest) * (10**6)
+        combined_rate_per_100k = (combined / annual_popest) * (10**5),
+        heroin_rate_per_100k = (heroin / annual_popest) * (10**5),
+        nonheroin_opioid_rate_per_100k = (nonheroin_opioid / annual_popest) * (10**5)
     )
 
 # print in wide format to HTML table
