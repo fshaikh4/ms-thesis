@@ -41,8 +41,8 @@ We handle project directory and data source filepath specification immediately b
 ```{r specify_data_paths}
 # path specification: data directory
 data_dir_path <- # uncomment appropriate option below
-    # "d:/Codebase/ms-thesis/data/" # laptop
-    "f:/Codebase/ms-thesis/data/" # desktop
+    "d:/Codebase/ms-thesis/data/" # laptop
+    # "f:/Codebase/ms-thesis/data/" # desktop
 
 # filename specification: Virginia administrative boundaries shapefiles
 va_admin_bound_fname <-
@@ -457,7 +457,7 @@ Our first model, referred to as an "Unconditional Growth" model, consists of mai
 # model 1 with counts
 model_1_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
     lme( # nlme implementation
         fixed = combined ~ 1,
         random = ~ 1 | Locality
@@ -471,7 +471,7 @@ summary(model_1_counts)
 # model 1 with rates
 model_1_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
     lme( # nlme implementation
         fixed = combined_rate_per_100k ~ 1,
         random = ~ 1 | Locality
@@ -534,8 +534,8 @@ Our second model, referred to as a "Fixed Growth" model, consists of main and ra
 # model 2 with counts
 model_2_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
         fixed = combined ~ Year.adj,
         random = ~ 1 | Locality
@@ -546,8 +546,8 @@ summary(model_2_counts)
 # model 2 with rates
 model_2_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
         fixed = combined_rate_per_100k ~ Year.adj,
         random = ~ 1 | Locality
@@ -606,8 +606,8 @@ Our third model, referred to as a "Random Growth" model, consists of main and ra
 # model 3 with counts
 model_3_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
         fixed = combined ~ Year.adj,
         random = ~ Year.adj | Locality
@@ -618,8 +618,8 @@ summary(model_3_counts)
 # model 3 with rates
 model_3_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
         fixed = nonheroin_opioid_rate_per_100k ~ Year.adj,
         random = ~ Year.adj | Locality
@@ -720,8 +720,9 @@ Our final model, referred to as a "Random Growth" model with time-varying covari
 # model 4 with counts
 model_4_counts <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
+    na.omit() %>% # 1 set of z-scores is NA
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
         fixed = combined ~ Year.adj + zHB + zCC + zSEF + zPE,
         random = ~ Year.adj | Locality
@@ -732,8 +733,9 @@ summary(model_4_counts)
 # model 4 with rates
 model_4_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2016) %>% # for interpretation
+    # filter(Year %in% 2016:2021) %>% # match w/ publication
+    na.omit() %>% # 1 set of z-scores is NA
+    mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
         fixed = combined_rate_per_100k ~ Year.adj + zHB + zCC + zSEF + zPE,
         random = ~ Year.adj | Locality
