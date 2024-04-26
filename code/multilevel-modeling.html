@@ -1482,7 +1482,7 @@ border-radius: 0px;
 <h3 class="subtitle">Opioid overdose emergency department visits in
 Virginia counties.</h3>
 <h4 class="author">Faysal Shaikh</h4>
-<h4 class="date">Last updated April 18, 2024</h4>
+<h4 class="date">Last updated April 26, 2024</h4>
 
 </div>
 
@@ -1637,7 +1637,7 @@ vdh_localities_df &lt;- # derived data frame for geographic masking (as-needed)
                                                             # characters (i.e.,
                                                             # double-dagger)
     ) %&gt;%
-    as.data.frame() %&gt;%
+    as.data.frame() %&gt;% # required to undo list-conversion following lapply
     mutate(Locality = str_to_upper(Locality)) # avoid name case issues for merge
 
 nonheroin_wide &lt;- # nonheroin opioid ED visits (wide format)
@@ -3623,17 +3623,17 @@ with data from UVA population estimates to transform opioid overdose ED
 visit counts into rates per 100K population.</p>
 <pre class="r"><code>combined_edvisits_df &lt;- combined_edvisits_df %&gt;%
     mutate(
-        combined_rate_per_100k = (combined / annual_popest) * (10**5),
-        heroin_rate_per_100k = (heroin / annual_popest) * (10**5),
-        nonheroin_opioid_rate_per_100k = (nonheroin_opioid / annual_popest) * (10**5)
+        combined_rate_per_100K = (combined / annual_popest) * (10**5),
+        heroin_rate_per_100K = (heroin / annual_popest) * (10**5),
+        nonheroin_opioid_rate_per_100K = (nonheroin_opioid / annual_popest) * (10**5)
     )
 
 # print in wide format to HTML table
 combined_edvisits_df %&gt;%
-    select(Locality, Year, combined_rate_per_100k) %&gt;%
+    select(Locality, Year, combined_rate_per_100K) %&gt;%
     pivot_wider(
         names_from = Year,
-        values_from = combined_rate_per_100k
+        values_from = combined_rate_per_100K
     ) %&gt;%
     group_by(Locality) %&gt;%
     summarize_all(sum) %&gt;%
@@ -5276,10 +5276,10 @@ combined_edvisits_df %&gt;%
 </tr>
 </tbody>
 </table>
-<pre class="r"><code># visualize ED visit rate per 100k values
+<pre class="r"><code># visualize ED visit rate per 100K values
 combined_edvisits_df %&gt;%
     filter(Locality != &quot;VIRGINIA&quot;) %&gt;%
-    ggplot(aes(x = Year, y = combined_rate_per_100k, color = Locality)) +
+    ggplot(aes(x = Year, y = combined_rate_per_100K, color = Locality)) +
     geom_point() +
     geom_line() +
     theme_classic() +
@@ -5416,11 +5416,11 @@ model_1_rates &lt;- combined_edvisits_df %&gt;%
     filter(Locality != &quot;VIRGINIA&quot;) %&gt;%
     # filter(Year %in% 2016:2021) %&gt;% # match w/ publication
     lme( # nlme implementation
-        fixed = combined_rate_per_100k ~ 1,
+        fixed = combined_rate_per_100K ~ 1,
         random = ~ 1 | Locality
     )
     # lmer( # lme4 implementation
-    #     formula = combined_rate_per_100k ~ (1 | Locality),
+    #     formula = combined_rate_per_100K ~ (1 | Locality),
     # )
 
 summary(model_1_rates)</code></pre>
@@ -5434,7 +5434,7 @@ summary(model_1_rates)</code></pre>
 ##         (Intercept) Residual
 ## StdDev:     670.268 180.5453
 ## 
-## Fixed effects:  combined_rate_per_100k ~ 1 
+## Fixed effects:  combined_rate_per_100K ~ 1 
 ##                Value Std.Error   DF t-value p-value
 ## (Intercept) 344.1743  58.35341 1064  5.8981       0
 ## 
@@ -5531,7 +5531,7 @@ model_2_rates &lt;- combined_edvisits_df %&gt;%
     # filter(Year %in% 2016:2021) %&gt;% # match w/ publication
     mutate(Year.adj = Year - 2015) %&gt;% # for interpretation
     lme(
-        fixed = combined_rate_per_100k ~ Year.adj,
+        fixed = combined_rate_per_100K ~ Year.adj,
         random = ~ 1 | Locality
     )
 
@@ -5546,7 +5546,7 @@ summary(model_2_rates)</code></pre>
 ##         (Intercept) Residual
 ## StdDev:    670.3711 177.0663
 ## 
-## Fixed effects:  combined_rate_per_100k ~ Year.adj 
+## Fixed effects:  combined_rate_per_100K ~ Year.adj 
 ##                 Value Std.Error   DF  t-value p-value
 ## (Intercept) 292.04918  58.88958 1063 4.959268       0
 ## Year.adj     13.03127   1.98214 1063 6.574343       0
@@ -5649,7 +5649,7 @@ model_3_rates &lt;- combined_edvisits_df %&gt;%
     # filter(Year %in% 2016:2021) %&gt;% # match w/ publication
     mutate(Year.adj = Year - 2015) %&gt;% # for interpretation
     lme(
-        fixed = nonheroin_opioid_rate_per_100k ~ Year.adj,
+        fixed = nonheroin_opioid_rate_per_100K ~ Year.adj,
         random = ~ Year.adj | Locality
     )
 
@@ -5667,7 +5667,7 @@ summary(model_3_rates)</code></pre>
 ## Year.adj     36.81141 -0.455
 ## Residual    119.96140       
 ## 
-## Fixed effects:  nonheroin_opioid_rate_per_100k ~ Year.adj 
+## Fixed effects:  nonheroin_opioid_rate_per_100K ~ Year.adj 
 ##                 Value Std.Error   DF  t-value p-value
 ## (Intercept) 261.41633  57.95883 1063 4.510380  0.0000
 ## Year.adj     12.11043   3.46294 1063 3.497157  0.0005
@@ -5826,7 +5826,7 @@ model_4_rates &lt;- combined_edvisits_df %&gt;%
     na.omit() %&gt;% # 1 set of z-scores is NA
     mutate(Year.adj = Year - 2015) %&gt;% # for interpretation
     lme(
-        fixed = combined_rate_per_100k ~ Year.adj + zHB + zCC + zSEF + zPE,
+        fixed = combined_rate_per_100K ~ Year.adj + zHB + zCC + zSEF + zPE,
         random = ~ Year.adj | Locality
     )
 
@@ -5844,7 +5844,7 @@ summary(model_4_rates)</code></pre>
 ## Year.adj     44.98972 -0.466
 ## Residual    130.65551       
 ## 
-## Fixed effects:  combined_rate_per_100k ~ Year.adj + zHB + zCC + zSEF + zPE 
+## Fixed effects:  combined_rate_per_100K ~ Year.adj + zHB + zCC + zSEF + zPE 
 ##                  Value Std.Error   DF   t-value p-value
 ## (Intercept)  296.35074  65.10713 1034  4.551740  0.0000
 ## Year.adj      13.31107   4.21502 1034  3.158011  0.0016
@@ -5867,6 +5867,257 @@ summary(model_4_rates)</code></pre>
 ## Number of Observations: 1169
 ## Number of Groups: 130</code></pre>
 </div>
+</div>
+<div id="replication-analyses" class="section level1">
+<h1>Replication analyses</h1>
+<p>So far, in my efforts, I have had issues replicating the results from
+publication. As a last effort, I am now trying to use the numbers
+obtained directly from the VDH for ED visit rates per 100K population
+(rather than via my own calculation combining 2 data sources). I perform
+these tasks below:</p>
+<pre class="r"><code>original_data_fname &lt;-
+    &quot;extract-rates-per-100k-pop.xlsx&quot;
+original_data_fullpath &lt;-
+    paste0(data_dir_path, original_data_fname)
+
+# read-in the data
+original_data_df &lt;- read_excel( # original analyses were nonheroin-opioid only,
+                                # so we select the appropriate sheet below
+    path = original_data_fullpath,
+    sheet = excel_sheets(original_data_fullpath)[1]
+    ) %&gt;%
+    slice(-1) %&gt;% # remove first non-data row
+    select(&quot;OPIOID&quot;, paste0(&quot;...&quot;, ((0:(2023 - 2015)) * 4) + 5)) %&gt;%
+    # the above formula helps us access the autogenerated column #s of our
+    # desired measure: avg monthly overdose rates per 100K population
+    rename(&quot;Locality&quot; = &quot;OPIOID&quot;) %&gt;% # rename OPIOID col to Locality
+    mutate(Locality =
+        str_to_upper(str_replace_all(Locality, &quot;[^a-zA-Z0-9 ]&quot;, &quot;&quot;))
+    ) %&gt;%
+    # the above line is to remove special characters (i.e., double-dagger) and
+    # uppercase all locality names to avoid name case issues during merge
+    rename_with(
+        .fn = function(original_colname) {
+            # extract number from colname
+            original_colname_num &lt;- original_colname %&gt;%
+                substr(., 4, nchar(.)) %&gt;% # remove leading &quot;...&quot;
+                as.numeric()
+
+            # transform number to year number, as a character type 
+            new_colname &lt;- as.character(2015 + (original_colname_num - 5) / 4)
+
+            return(new_colname)
+        },
+        .cols = 2:last_col() # ignore OPIOID col
+    ) %&gt;%
+    pivot_longer( # make data long format
+        cols = as.character(2015:2023),
+        names_to = &quot;Year&quot;, # ensure this is updated to match the data timeframe
+        values_to = &quot;pub_rate_per_100K&quot; # Avg Monthly Opioid ED Visit Rate per
+                                        # 100K Population, measure used in pub
+    ) %&gt;%
+    mutate(
+            Year = as.numeric(Year), # convert Year back to numeric for merge
+            pub_rate_per_100K = as.numeric(pub_rate_per_100K) # was character
+    )</code></pre>
+<pre><code>## New names:
+## * `` -&gt; `...3`
+## * `` -&gt; `...4`
+## * `` -&gt; `...5`
+## * `` -&gt; `...7`
+## * `` -&gt; `...8`
+## * `` -&gt; `...9`
+## * `` -&gt; `...11`
+## * `` -&gt; `...12`
+## * `` -&gt; `...13`
+## * `` -&gt; `...15`
+## * `` -&gt; `...16`
+## * `` -&gt; `...17`
+## * `` -&gt; `...19`
+## * `` -&gt; `...20`
+## * `` -&gt; `...21`
+## * `` -&gt; `...23`
+## * `` -&gt; `...24`
+## * `` -&gt; `...25`
+## * `` -&gt; `...27`
+## * `` -&gt; `...28`
+## * `` -&gt; `...29`
+## * `` -&gt; `...31`
+## * `` -&gt; `...32`
+## * `` -&gt; `...33`
+## * `` -&gt; `...35`
+## * `` -&gt; `...36`
+## * `` -&gt; `...37`</code></pre>
+<pre class="r"><code># merge-in other relevant data from combined_edvisits_df
+replication_df &lt;- combined_edvisits_df %&gt;%
+    left_join(original_data_df)</code></pre>
+<pre><code>## Joining with `by = join_by(Locality, Year)`</code></pre>
+<p>And below, we run models on our newly-created
+<code>replication_df</code> to generate results from the original data
+used in the publication.</p>
+<pre class="r"><code># model 1: unconditional (growth)
+model_1_pub &lt;- replication_df %&gt;%
+    filter(Locality != &quot;VIRGINIA&quot;) %&gt;%
+    filter(Year %in% 2016:2021) %&gt;% # match w/ publication
+    lme( # nlme implementation
+        fixed = pub_rate_per_100K ~ 1,
+        random = ~ 1 | Locality
+    )
+    # lmer( # lme4 implementation
+    #     formula = pub_rate_per_100K ~ (1 | Locality),
+    # )
+
+summary(model_1_pub)</code></pre>
+<pre><code>## Linear mixed-effects model fit by REML
+##   Data: . 
+##        AIC      BIC    logLik
+##   4487.212 4501.255 -2240.606
+## 
+## Random effects:
+##  Formula: ~1 | Locality
+##         (Intercept) Residual
+## StdDev:    4.152445 3.298165
+## 
+## Fixed effects:  pub_rate_per_100K ~ 1 
+##                Value Std.Error  DF  t-value p-value
+## (Intercept) 9.524157 0.3785189 665 25.16164       0
+## 
+## Standardized Within-Group Residuals:
+##        Min         Q1        Med         Q3        Max 
+## -2.9645413 -0.4907100 -0.0319084  0.3797405  5.3653354 
+## 
+## Number of Observations: 798
+## Number of Groups: 133</code></pre>
+<pre class="r"><code># model 2: fixed growth
+model_2_pub &lt;- replication_df %&gt;%
+    filter(Locality != &quot;VIRGINIA&quot;) %&gt;%
+    filter(Year %in% 2016:2021) %&gt;% # match w/ publication
+    mutate(Year.adj = Year - 2015) %&gt;% # for interpretation
+    lme(
+        fixed = pub_rate_per_100K ~ Year.adj,
+        random = ~ 1 | Locality
+    )
+    # lmer( # lme4 implementation
+    #     formula = pub_rate_per_100K ~ Year.adj + (1 | Locality),
+    # )
+
+summary(model_2_pub)</code></pre>
+<pre><code>## Linear mixed-effects model fit by REML
+##   Data: . 
+##        AIC      BIC    logLik
+##   4436.743 4455.461 -2214.371
+## 
+## Random effects:
+##  Formula: ~1 | Locality
+##         (Intercept) Residual
+## StdDev:    4.169762 3.164365
+## 
+## Fixed effects:  pub_rate_per_100K ~ Year.adj 
+##                Value Std.Error  DF   t-value p-value
+## (Intercept) 7.769420 0.4426936 664 17.550332       0
+## Year.adj    0.501353 0.0655906 664  7.643675       0
+##  Correlation: 
+##          (Intr)
+## Year.adj -0.519
+## 
+## Standardized Within-Group Residuals:
+##         Min          Q1         Med          Q3         Max 
+## -2.69674376 -0.54617361 -0.03265872  0.45560141  5.16937163 
+## 
+## Number of Observations: 798
+## Number of Groups: 133</code></pre>
+<pre class="r"><code># model 3: random growth
+model_3_pub &lt;- replication_df %&gt;%
+    filter(Locality != &quot;VIRGINIA&quot;) %&gt;%
+    filter(Year %in% 2016:2021) %&gt;% # match w/ publication
+    mutate(Year.adj = Year - 2015) %&gt;% # for interpretation
+    lme(
+        fixed = pub_rate_per_100K ~ Year.adj,
+        random = ~ Year.adj | Locality
+    )
+    # lmer( # lme4 implementation
+    #     formula = pub_rate_per_100K ~ (Year.Adj | Locality) + (1 | Locality),
+    # )
+
+summary(model_3_pub)</code></pre>
+<pre><code>## Linear mixed-effects model fit by REML
+##   Data: . 
+##        AIC      BIC    logLik
+##   4332.166 4360.244 -2160.083
+## 
+## Random effects:
+##  Formula: ~Year.adj | Locality
+##  Structure: General positive-definite, Log-Cholesky parametrization
+##             StdDev    Corr  
+## (Intercept) 4.0196820 (Intr)
+## Year.adj    0.9426779 -0.345
+## Residual    2.6309037       
+## 
+## Fixed effects:  pub_rate_per_100K ~ Year.adj 
+##                Value Std.Error  DF   t-value p-value
+## (Intercept) 7.769420 0.4081557 664 19.035433       0
+## Year.adj    0.501353 0.0982618 664  5.102222       0
+##  Correlation: 
+##          (Intr)
+## Year.adj -0.504
+## 
+## Standardized Within-Group Residuals:
+##         Min          Q1         Med          Q3         Max 
+## -3.05710594 -0.51460463 -0.01088038  0.44439684  3.56223768 
+## 
+## Number of Observations: 798
+## Number of Groups: 133</code></pre>
+<pre class="r"><code># model 4: random growth w/ TVCs
+model_4_pub &lt;- replication_df %&gt;%
+    filter(Locality != &quot;VIRGINIA&quot;) %&gt;%
+    filter(Year %in% 2016:2021) %&gt;% # match w/ publication
+    na.omit() %&gt;% # 1 set of z-scores is NA
+    mutate(Year.adj = Year - 2015) %&gt;% # for interpretation
+    lme(
+        fixed = pub_rate_per_100K ~ Year.adj + zHB + zCC + zSEF + zPE,
+        random = ~ Year.adj | Locality
+    )
+    # lmer( # lme4 implementation
+    #      formula = pub_rate_per_100K ~ zHB + zCC + zSEF + zPE 
+    #         + (Year.adj | Locality) + (1 | Locality),
+    # )
+
+summary(model_4_pub)</code></pre>
+<pre><code>## Linear mixed-effects model fit by REML
+##   Data: . 
+##        AIC      BIC    logLik
+##   4201.861 4248.377 -2090.931
+## 
+## Random effects:
+##  Formula: ~Year.adj | Locality
+##  Structure: General positive-definite, Log-Cholesky parametrization
+##             StdDev    Corr  
+## (Intercept) 3.9600020 (Intr)
+## Year.adj    0.9529412 -0.432
+## Residual    2.6083347       
+## 
+## Fixed effects:  pub_rate_per_100K ~ Year.adj + zHB + zCC + zSEF + zPE 
+##                 Value Std.Error  DF   t-value p-value
+## (Intercept)  7.790265  0.407507 645 19.116904  0.0000
+## Year.adj     0.505095  0.099884 645  5.056806  0.0000
+## zHB         -1.845928  1.990241 645 -0.927490  0.3540
+## zCC         -5.480532  2.668328 645 -2.053920  0.0404
+## zSEF         5.988863  1.578398 645  3.794266  0.0002
+## zPE          6.023419  4.553444 645  1.322827  0.1864
+##  Correlation: 
+##          (Intr) Yer.dj zHB    zCC    zSEF  
+## Year.adj -0.565                            
+## zHB       0.001 -0.002                     
+## zCC      -0.006  0.004 -0.061              
+## zSEF      0.004 -0.001 -0.622 -0.277       
+## zPE      -0.020  0.009 -0.078 -0.143  0.039
+## 
+## Standardized Within-Group Residuals:
+##         Min          Q1         Med          Q3         Max 
+## -3.10994845 -0.51341464 -0.01358722  0.43029562  3.64843992 
+## 
+## Number of Observations: 780
+## Number of Groups: 130</code></pre>
 </div>
 
 
