@@ -797,7 +797,20 @@ original_data_df <- read_excel( # original analyses were nonheroin-opioid only,
 
 # merge-in other relevant data from combined_edvisits_df
 replication_df <- combined_edvisits_df %>%
-    left_join(original_data_df)
+    left_join(original_data_df) %>%
+    mutate(
+        annual_pub_rate_per_100K = 12 * pub_rate_per_100K,
+        error_from_pub_rate = annual_pub_rate_per_100K - nonheroin_opioid_rate_per_100K,
+        rel_error_from_pub_rate = error_from_pub_rate / annual_pub_rate_per_100K
+    )
+```
+
+If we are interested, we can look at the differences between our calculated data and the VDH data for annual rates per 100K:
+
+```{r present-rates-calc-vs-VDH}
+replication_df %>%
+    select(Locality, Year, nonheroin_opioid_rate_per_100K, annual_pub_rate_per_100K, error_from_pub_rate, rel_error_from_pub_rate) %>%
+    knitr::kable(style = "html")
 ```
 
 And below, we run models on our newly-created `replication_df` to generate results from the original data used in the publication.
