@@ -127,13 +127,17 @@ vdh_ed_visits_sheetslist <-
 vdh_ed_visits_nonheroin_opioid <- read_excel(
     path = vdh_ed_visits_fullpath,
     sheet = vdh_ed_visits_sheetslist[5] # locality opioid
-)
+) %>%
+    slice(-1) # remove first non-data row
+
 vdh_ed_visits_heroin <- read_excel(
     path = vdh_ed_visits_fullpath,
     sheet = vdh_ed_visits_sheetslist[6] # locality heroin
-)
+) %>%
+    slice(-1) # remove first non-data row
 
 ## output data: nonheroin opioid ED visits
+# want to deprecate this (dates_vec)
 dates_vec <- # derived years date-vector for time masking (as-needed)
     2015:2023 %>%
     paste("Total") # Year "Total"
@@ -141,7 +145,6 @@ dates_vec <- # derived years date-vector for time masking (as-needed)
 vdh_localities_df <- # derived data frame for geographic masking (as-needed)
     vdh_ed_visits_nonheroin_opioid %>%
     select("OPIOID", "...2") %>%
-    slice(-1) %>% # remove first non-data row
     rename("Locality" = "OPIOID", "FIPS" = "...2") %>%
     lapply(
         function(x) str_replace_all(x, "[^a-zA-Z0-9 ]", "") # remove special
@@ -153,100 +156,175 @@ vdh_localities_df <- # derived data frame for geographic masking (as-needed)
 
 nonheroin_wide <- # nonheroin opioid ED visits (wide format)
     vdh_localities_df %>%
-    cbind(vdh_ed_visits_nonheroin_opioid[dates_vec][-1, ]) %>%
-    mutate(across(-Locality, as.numeric)) # convert non-labels to numeric
+    cbind(vdh_ed_visits_nonheroin_opioid[c(
+        51 + (0:(2023 - 2015)) * 52, # indices for annual overdose visits
+        54 + (0:(2023 - 2015)) * 52 # indices for annual avg monthly overdose
+                                    # visits per 100K population
+    )]) %>%
+    mutate(across(-Locality, as.numeric)) %>% # convert non-labels to numeric
+    rename_with(
+        .fn = function(original_colname) {
+            # extract number from colname
+            original_colname_num <- original_colname %>%
+                substr(., 4, nchar(.)) %>% # remove leading "..."
+                as.numeric()
 
-nonheroin_tslist <- # nonheroin opioid ED visit ts objects stored in named list
-    sapply(
-        vdh_localities_df[, ],
-        function(x) {
-            nonheroin_wide[nonheroin_wide["Locality"] == x][2:110] %>%
-                as.numeric() %>%
-                ts(start = 2015, end = 2023, frequency = 1) # ensure this is
-                                                            # updated to match
-                                                            # the data timeframe
+            # transform number to year number, as a character type
+            new_colname_num <-
+                as.character(2015 + (original_colname_num - 54) / 52)
+
+            new_colname <- paste(new_colname_num, "Avg Monthly Rate per 100K")
+
+            return(new_colname)
         },
-        simplify = FALSE, USE.NAMES = TRUE
+        .cols = 12:last_col() # only avg monthly cols
     )
 
 nonheroin_opioid_edvisits_df <-
     nonheroin_wide %>%
-    pivot_longer(
-        cols = dates_vec,
-        names_to = "Year", # ensure this is updated to match the data timeframe
-        values_to = "Count: Nonheroin Opioid ED Visits"
+    pivot_longer( # CREATES 2 COLS IN LONG FORMAT:
+                  # - ANNUAL COUNT
+                  # - ANNUAL AVG MONTHLY RATE PER 100K POPULATION
+        cols = 3:last_col(), # want to ignore Locality & FIPS
+        names_to = c("Year", ".value"),
+        names_sep = " "
     ) %>%
-    mutate(`Count: Nonheroin Opioid ED Visits` =
-        as.numeric(`Count: Nonheroin Opioid ED Visits`)
+    rename(
+        "ed_visit_count" = "Total",
+        "ed_visit_rate_per_100K" = "Avg"
     )
 
 ## output data: heroin (opioid) ED visits
 heroin_wide <- # heroin ED visits (wide format)
     vdh_localities_df %>%
-    cbind(vdh_ed_visits_heroin[dates_vec][-1, ]) %>%
-    mutate(across(-Locality, as.numeric)) # convert non-labels to numeric
+    cbind(vdh_ed_visits_heroin[c(
+        51 + (0:(2023 - 2015)) * 52, # indices for annual overdose visits
+        54 + (0:(2023 - 2015)) * 52 # indices for annual avg monthly overdose
+                                    # visits per 100K population
+    )]) %>%
+    mutate(across(-Locality, as.numeric)) %>% # convert non-labels to numeric
+    rename_with(
+        .fn = function(original_colname) {
+            # extract number from colname
+            original_colname_num <- original_colname %>%
+                substr(., 4, nchar(.)) %>% # remove leading "..."
+                as.numeric()
 
-heroin_edvisits_ts_list <- # heroin ED visit ts objects stored in named list
-    sapply(
-        vdh_localities_df[, ],
-        function(x) {
-            heroin_wide[heroin_wide["Locality"] == x][2:110] %>%
-            as.numeric() %>%
-            ts(start = 2015, end = 2023, frequency = 1)
-        }, # ensure this is updated to the data
-    simplify = FALSE, USE.NAMES = TRUE
+            # transform number to year number, as a character type
+            new_colname_num <-
+                as.character(2015 + (original_colname_num - 54) / 52)
+
+            new_colname <- paste(new_colname_num, "Avg Monthly Rate per 100K")
+
+            return(new_colname)
+        },
+        .cols = 12:last_col() # only avg monthly cols
     )
 
 heroin_edvisits_df <-
     heroin_wide %>%
-    pivot_longer(
-        cols = dates_vec,
-        names_to = "Year", # ensure this is updated to match the data timeframe
-        values_to = "Count: Heroin ED Visits"
+    pivot_longer( # CREATES 2 COLS IN LONG FORMAT:
+                  # - ANNUAL COUNT
+                  # - ANNUAL AVG MONTHLY RATE PER 100K POPULATION
+        cols = 3:last_col(), # want to ignore Locality & FIPS
+        names_to = c("Year", ".value"),
+        names_sep = " "
     ) %>%
-    mutate(`Count: Heroin ED Visits` =
-        as.numeric(`Count: Heroin ED Visits`)
+    rename(
+        "ed_visit_count" = "Total",
+        "ed_visit_rate_per_100K" = "Avg"
     )
 
 ## output data: combined ED visits [heroin (opioid) + nonheroin opioid]
 combined_edvisits_df <-
-    inner_join(heroin_edvisits_df, nonheroin_opioid_edvisits_df) %>%
-    group_by(Locality, Year) %>%
-    rename(
-        heroin = `Count: Heroin ED Visits`,
-        nonheroin_opioid = `Count: Nonheroin Opioid ED Visits`
+    inner_join(
+        x = heroin_edvisits_df,
+        y = nonheroin_opioid_edvisits_df,
+        by = c("Locality", "FIPS", "Year"),
+        suffix = c(".heroin", ".nonheroin_opioid")
     ) %>%
+    group_by(Locality, Year) %>%
     mutate(
-        Year = as.numeric(str_sub(Year, end = -6)), # ensure this is updated to
-                                                    # match the data timeframe
-        combined = sum(c(heroin, nonheroin_opioid)),
-        FIPS = as.character(FIPS) # fix treatment of FIPS as double
+        FIPS = as.character(FIPS), # fix treatment of FIPS as double
+        Year = as.numeric(Year),
+        ed_visit_count.combined = sum(
+            ed_visit_count.nonheroin_opioid,
+            ed_visit_count.heroin
+        ),
+        ed_visit_rate_per_100K.combined = sum(
+            ed_visit_rate_per_100K.nonheroin_opioid,
+            ed_visit_rate_per_100K.heroin
+        ),
+        # annual ED visit rates per 100K population (12X of Avg-Monthly rates)
+        ed_visit_rate_per_100K.combined_annual =
+            12 * ed_visit_rate_per_100K.combined,
+        ed_visit_rate_per_100K.nonheroin_opioid_annual =
+            12 * ed_visit_rate_per_100K.nonheroin_opioid,
+        ed_visit_rate_per_100K.heroin_annual =
+            12 * ed_visit_rate_per_100K.heroin
     ) %>%
     left_join( # combine above with geography
         va_counties,
         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
-    )
+    ) # after geographic join, I found an unexpected number of NA values. turns
+      # out, many of these are due to NA values in the geographic column:
+      # LASTUPDATE. other (expected) NA values were when Locality == "VIRGINIA"
+      # (no assigned FIPS code in our county dataset for entire VA state entity)
 
 # visualize combined ED visits
+## Plot 1: Counts (not adjusted for population)
 combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
-    ggplot(aes(x = Year, y = combined, color = Locality)) +
+    ggplot(aes(
+        x = Year,
+        y = ed_visit_count.combined,
+        color = Locality
+        )
+    ) +
     geom_point() +
     geom_line() +
     theme_classic() +
     theme(legend.position = "none") +
-    ggtitle("Combined ED visits over time by county") +
-    ylab("Combined (including heroin) \n opioid overdose ED visits") +
+    ggtitle(
+        "Combined ED visits over time by county
+        (not adjusted for population)"
+    ) +
+    ylab(
+        "Combined (including heroin)
+        opioid overdose ED visits"
+    ) +
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
-# print data in wide format as an HTML table
-bind_rows(
-    nonheroin_wide,
-    heroin_wide
-) %>%
-    group_by(Locality) %>%
-    summarize_all(sum) %>%
-    knitr::kable(style = "html")
+## Plot 2: Annual Avg-Monthly-Rates-per-100K-Population
+combined_edvisits_df %>%
+    filter(Locality != "VIRGINIA") %>%
+    ggplot(aes(
+        x = Year,
+        y = ed_visit_rate_per_100K.combined,
+        color = Locality
+        )
+    ) +
+    geom_point() +
+    geom_line() +
+    theme_classic() +
+    theme(legend.position = "none") +
+    ggtitle(
+        "Combined Annual average monthly ED visit rates
+        per 100K population, over time by county"
+    ) +
+    ylab(
+        "Combined (including heroin)
+        opioid overdose ED visit rates
+        per 100K population"
+    ) +
+    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+
+# # print data in wide format as an HTML table
+# # BROKEN(?): double-check what "summarize_all(sum)" is doing
+# combined_edvisits_df[, c(1, 3:9)] %>%
+#     group_by(Locality, Year) %>%
+#     summarize_all(sum) %>%
+#     knitr::kable(style = "html")
 ```
 
 According to VDH criteria, [opioid data seems to exclude "heroin"](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-case-definition/#:~:text=medication%20or%20drug%2C-,heroin,-%2C%20dope%2C%20speed%20ball) ICD codes.  Experts believe heroin opioid overdose deaths have plateaued in the wake of the latest wave(s) of the opioid epidemic, driven now heavily by synthetic opioids such as fentanyl.
@@ -337,7 +415,8 @@ combined_edvisits_df %>% # now exclude Fairfax County as well
     geom_line() +
     theme_classic() +
     theme(legend.position = "none") +
-    ggtitle("Population estimates over time by county\n(excluding Fairfax County)") +
+    ggtitle("Population estimates over time by county
+        (excluding Fairfax County)") +
     ylab("Annual population estimate") +
     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 ```
@@ -346,12 +425,16 @@ combined_edvisits_df %>% # now exclude Fairfax County as well
 
 We use data from VDH for opioid overdose ED visits in conjunction with data from UVA population estimates to transform opioid overdose ED visit counts into rates per 100K population.
 
-```{r calc_ed_visit_rates_per_capita}
+```{r calc_ed_visit_rates_per_capita, eval = F}
+# 04/29/2023: below is broken. favoring VDH numbers for rate per 100K population
+# until other fixes are made to calculate appopriate entities together (based
+# on VDH methodology, also described in Figure S1 of publication)
 combined_edvisits_df <- combined_edvisits_df %>%
     mutate(
         combined_rate_per_100K = (combined / annual_popest) * (10**5),
         heroin_rate_per_100K = (heroin / annual_popest) * (10**5),
-        nonheroin_opioid_rate_per_100K = (nonheroin_opioid / annual_popest) * (10**5)
+        nonheroin_opioid_rate_per_100K =
+            (nonheroin_opioid / annual_popest) * (10**5)
     )
 
 # print in wide format to HTML table
@@ -415,7 +498,8 @@ for (chosen_year in 2015:2023) {
             "Year" = as.numeric(chosen_year),
             `Health Behaviors` = as.numeric(`Health Behaviors`),
             `Clinical Care` = as.numeric(`Clinical Care`),
-            `Social & Economic Factors` = as.numeric(`Social & Economic Factors`),
+            `Social & Economic Factors` =
+                as.numeric(`Social & Economic Factors`),
             `Physical Environment` = as.numeric(`Physical Environment`)
         )
 
@@ -429,8 +513,9 @@ Since there is so much data, we will merge in a separate chunk.
 ```{r merge_chr_data}
 combined_edvisits_df <- combined_edvisits_df %>%
     left_join(chr_data_collector, by = c("FIPS", "Year"))
-    
-combined_edvisits_df <- combined_edvisits_df %>% # need to be separate from above for some reason
+
+combined_edvisits_df <-
+    combined_edvisits_df %>% # need to be separate from above for some reason
     rename(
         "zHB" = "Health Behaviors",
         "zCC" = "Clinical Care",
@@ -454,55 +539,56 @@ Some of our lesser-specified models will omit main/random effects of time (slope
 Our first model, referred to as an "Unconditional Growth" model, consists of main and random effects for intercept, but nothing else.
 
 ```{r unconditional_growth_model}
-# model 1 with counts
-model_1_counts <- combined_edvisits_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    # filter(Year %in% 2016:2021) %>% # match w/ publication
-    lme( # nlme implementation
-        fixed = combined ~ 1,
-        random = ~ 1 | Locality
-    )
-    # lmer( # lme4 implementation
-    #     formula = combined ~ (1 | Locality)
-    # )
+# # model 1 with counts
+# model_1_counts <- combined_edvisits_df %>%
+#     filter(Locality != "VIRGINIA") %>%
+#     filter(Year %in% 2016:2021) %>% # match w/ publication
+#     lme( # nlme implementation
+#         fixed = ed_visit_count.nonheroin_opioid ~ 1,
+#         random = ~ 1 | Locality
+#     )
+#     # lmer( # lme4 implementation
+#     #     formula = ed_visit_count.combined ~ (1 | Locality)
+#     # )
 
-summary(model_1_counts)
+# summary(model_1_counts)
 
 # model 1 with rates
 model_1_rates <- combined_edvisits_df %>%
     filter(Locality != "VIRGINIA") %>%
     # filter(Year %in% 2016:2021) %>% # match w/ publication
     lme( # nlme implementation
-        fixed = combined_rate_per_100K ~ 1,
+        fixed = ed_visit_rate_per_100K.combined_annual ~
+            1,
         random = ~ 1 | Locality
     )
     # lmer( # lme4 implementation
-    #     formula = combined_rate_per_100K ~ (1 | Locality),
+    #     formula = ed_visit_rate_per_100K.combined ~ (1 | Locality),
     # )
 
 summary(model_1_rates)
 ```
 
 ```{r plot_model_1_random_effects}
-ranef(model_1_counts) %>%
-    rownames_to_column(var = "Locality") %>%
-    left_join( # combine above with geography
-        va_counties,
-        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
-    ) %>%
-    ggplot() +
-    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
-    scale_fill_gradient2( # ggplot2 3.3.5 syntax
-        midpoint = 0,
-        high = "blue",
-        mid = "white",
-        low = "red",
-        na.value = "black",
-        guide = "colorbar"
-    ) +
-    theme_void() +
-    ggtitle("Random intercepts for opioid overdose ED visit counts") +
-    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+# ranef(model_1_counts) %>%
+#     rownames_to_column(var = "Locality") %>%
+#     left_join( # combine above with geography
+#         va_counties,
+#         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+#     ) %>%
+#     ggplot() +
+#     geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+#     scale_fill_gradient2( # ggplot2 3.3.5 syntax
+#         midpoint = 0,
+#         high = "blue",
+#         mid = "white",
+#         low = "red",
+#         na.value = "black",
+#         guide = "colorbar"
+#     ) +
+#     theme_void() +
+#     ggtitle("Random intercepts for opioid overdose ED visit counts") +
+#     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
 
 ranef(model_1_rates) %>%
@@ -511,7 +597,7 @@ ranef(model_1_rates) %>%
         va_counties,
         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
     ) %>%
-    ggplot() + 
+    ggplot() +
     geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
     scale_fill_gradient2( # ggplot2 3.3.5 syntax
         midpoint = 0,
@@ -531,17 +617,17 @@ ranef(model_1_rates) %>%
 Our second model, referred to as a "Fixed Growth" model, consists of main and random effects for intercept but only a main effect of time.
 
 ```{r fixed_growth_model}
-# model 2 with counts
-model_2_counts <- combined_edvisits_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    # filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
-    lme(
-        fixed = combined ~ Year.adj,
-        random = ~ 1 | Locality
-    )
+# # model 2 with counts
+# model_2_counts <- combined_edvisits_df %>%
+#     filter(Locality != "VIRGINIA") %>%
+#     filter(Year %in% 2016:2021) %>% # match w/ publication
+#     mutate(Year.adj = Year - 2015) %>% # for interpretation
+#     lme(
+#         fixed = ed_visit_count.nonheroin_opioid ~ Year.adj,
+#         random = ~ 1 | Locality
+#     )
 
-summary(model_2_counts)
+# summary(model_2_counts)
 
 # model 2 with rates
 model_2_rates <- combined_edvisits_df %>%
@@ -549,7 +635,8 @@ model_2_rates <- combined_edvisits_df %>%
     # filter(Year %in% 2016:2021) %>% # match w/ publication
     mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
-        fixed = combined_rate_per_100K ~ Year.adj,
+        fixed = ed_visit_rate_per_100K.combined_annual ~
+            Year.adj,
         random = ~ 1 | Locality
     )
 
@@ -557,25 +644,25 @@ summary(model_2_rates)
 ```
 
 ```{r plot_model_2_random_effects}
-ranef(model_2_counts) %>%
-    rownames_to_column(var = "Locality") %>%
-    left_join( # combine above with geography
-        va_counties,
-        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
-    ) %>%
-    ggplot() + 
-    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
-    scale_fill_gradient2( # ggplot2 3.3.5 syntax
-        midpoint = 0,
-        high = "blue",
-        mid = "white",
-        low = "red",
-        na.value = "black",
-        guide = "colorbar"
-    ) +
-    theme_void() +
-    ggtitle("Random intercepts for opioid overdose ED visit counts") +
-    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+# ranef(model_2_counts) %>%
+#     rownames_to_column(var = "Locality") %>%
+#     left_join( # combine above with geography
+#         va_counties,
+#         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+#     ) %>%
+#     ggplot() +
+#     geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+#     scale_fill_gradient2( # ggplot2 3.3.5 syntax
+#         midpoint = 0,
+#         high = "blue",
+#         mid = "white",
+#         low = "red",
+#         na.value = "black",
+#         guide = "colorbar"
+#     ) +
+#     theme_void() +
+#     ggtitle("Random intercepts for opioid overdose ED visit counts") +
+#     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
 ranef(model_2_rates) %>%
     rownames_to_column(var = "Locality") %>%
@@ -583,7 +670,7 @@ ranef(model_2_rates) %>%
         va_counties,
         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
     ) %>%
-    ggplot() + 
+    ggplot() +
     geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
     scale_fill_gradient2( # ggplot2 3.3.5 syntax
         midpoint = 0,
@@ -603,17 +690,17 @@ ranef(model_2_rates) %>%
 Our third model, referred to as a "Random Growth" model, consists of main and random effects for both intercept and time.
 
 ```{r random_growth_model}
-# model 3 with counts
-model_3_counts <- combined_edvisits_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    # filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
-    lme(
-        fixed = combined ~ Year.adj,
-        random = ~ Year.adj | Locality
-    )
+# # model 3 with counts
+# model_3_counts <- combined_edvisits_df %>%
+#     filter(Locality != "VIRGINIA") %>%
+#     filter(Year %in% 2016:2021) %>% # match w/ publication
+#     mutate(Year.adj = Year - 2015) %>% # for interpretation
+#     lme(
+#         fixed = ed_visit_count.nonheroin_opioid ~ Year.adj,
+#         random = ~ Year.adj | Locality
+#     )
 
-summary(model_3_counts)
+# summary(model_3_counts)
 
 # model 3 with rates
 model_3_rates <- combined_edvisits_df %>%
@@ -621,7 +708,8 @@ model_3_rates <- combined_edvisits_df %>%
     # filter(Year %in% 2016:2021) %>% # match w/ publication
     mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
-        fixed = nonheroin_opioid_rate_per_100K ~ Year.adj,
+        fixed = ed_visit_rate_per_100K.combined_annual ~
+            Year.adj,
         random = ~ Year.adj | Locality
     )
 
@@ -631,45 +719,45 @@ summary(model_3_rates)
 ### Plot model outputs
 
 ```{r plot_model_3_random_effects}
-ranef(model_3_counts) %>%
-    rownames_to_column(var = "Locality") %>%
-    left_join( # combine above with geography
-        va_counties,
-        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
-    ) %>%
-    ggplot() + 
-    geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
-    scale_fill_gradient2( # ggplot2 3.3.5 syntax
-        midpoint = 0,
-        high = "blue",
-        mid = "white",
-        low = "red",
-        na.value = "black",
-        guide = "colorbar"
-    ) +
-    theme_void() +
-    ggtitle("Random intercepts for opioid overdose ED visit counts") +
-    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+# ranef(model_3_counts) %>%
+#     rownames_to_column(var = "Locality") %>%
+#     left_join( # combine above with geography
+#         va_counties,
+#         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+#     ) %>%
+#     ggplot() +
+#     geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
+#     scale_fill_gradient2( # ggplot2 3.3.5 syntax
+#         midpoint = 0,
+#         high = "blue",
+#         mid = "white",
+#         low = "red",
+#         na.value = "black",
+#         guide = "colorbar"
+#     ) +
+#     theme_void() +
+#     ggtitle("Random intercepts for opioid overdose ED visit counts") +
+#     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
-ranef(model_3_counts) %>%
-    rownames_to_column(var = "Locality") %>%
-    left_join( # combine above with geography
-        va_counties,
-        by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
-    ) %>%
-    ggplot() +
-    geom_sf(aes(fill = `Year.adj`, geometry = geometry)) +
-    scale_fill_gradient2( # ggplot2 3.3.5 syntax
-        midpoint = 0,
-        high = "blue",
-        mid = "white",
-        low = "red",
-        na.value = "black",
-        guide = "colorbar"
-    ) +
-    theme_void() +
-    ggtitle("Random yearslopes for opioid overdose ED visit counts") +
-    theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
+# ranef(model_3_counts) %>%
+#     rownames_to_column(var = "Locality") %>%
+#     left_join( # combine above with geography
+#         va_counties,
+#         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
+#     ) %>%
+#     ggplot() +
+#     geom_sf(aes(fill = `Year.adj`, geometry = geometry)) +
+#     scale_fill_gradient2( # ggplot2 3.3.5 syntax
+#         midpoint = 0,
+#         high = "blue",
+#         mid = "white",
+#         low = "red",
+#         na.value = "black",
+#         guide = "colorbar"
+#     ) +
+#     theme_void() +
+#     ggtitle("Random yearslopes for opioid overdose ED visit counts") +
+#     theme(plot.title = element_text(hjust = 0.5, size = 12, face = "bold"))
 
 ranef(model_3_rates) %>%
     rownames_to_column(var = "Locality") %>%
@@ -677,7 +765,7 @@ ranef(model_3_rates) %>%
         va_counties,
         by = c("Locality" = "NAMELSAD") # dplyr 1.0.8 syntax
     ) %>%
-    ggplot() + 
+    ggplot() +
     geom_sf(aes(fill = `(Intercept)`, geometry = geometry)) +
     scale_fill_gradient2( # ggplot2 3.3.5 syntax
         midpoint = 0,
@@ -717,18 +805,19 @@ ranef(model_3_rates) %>%
 Our final model, referred to as a "Random Growth" model with time-varying covariates (TVCs), consists of main and random effects for both intercept and time as well as main effects for each of our 4 TVCs, taken from CHR data: Health Behaviors, Clinical Care, Social & Economic Factors, and Physical Environment.
 
 ```{r random_growth_with_TVCs_model}
-# model 4 with counts
-model_4_counts <- combined_edvisits_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    # filter(Year %in% 2016:2021) %>% # match w/ publication
-    na.omit() %>% # 1 set of z-scores is NA
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
-    lme(
-        fixed = combined ~ Year.adj + zHB + zCC + zSEF + zPE,
-        random = ~ Year.adj | Locality
-    )
+# # model 4 with counts
+# model_4_counts <- combined_edvisits_df %>%
+#     filter(Locality != "VIRGINIA") %>%
+#     filter(Year %in% 2016:2021) %>% # match w/ publication
+#     na.omit() %>% # 1 set of z-scores is NA
+#     mutate(Year.adj = Year - 2015) %>% # for interpretation
+#     lme(
+#         fixed = ed_visit_count.nonheroin_opioid ~ Year.adj +
+#             zHB + zCC + zSEF + zPE,
+#         random = ~ Year.adj | Locality
+#     )
 
-summary(model_4_counts)
+# summary(model_4_counts)
 
 # model 4 with rates
 model_4_rates <- combined_edvisits_df %>%
@@ -737,145 +826,11 @@ model_4_rates <- combined_edvisits_df %>%
     na.omit() %>% # 1 set of z-scores is NA
     mutate(Year.adj = Year - 2015) %>% # for interpretation
     lme(
-        fixed = combined_rate_per_100K ~ Year.adj + zHB + zCC + zSEF + zPE,
+        fixed = ed_visit_rate_per_100K.combined_annual ~
+            Year.adj +
+            zHB + zCC + zSEF + zPE,
         random = ~ Year.adj | Locality
     )
 
 summary(model_4_rates)
 ```
-
-# Replication analyses
-
-So far, in my efforts, I have had issues replicating the results from publication. As a last effort, I am now trying to use the numbers obtained directly from the VDH for ED visit rates per 100K population (rather than via my own calculation combining 2 data sources). I perform these tasks below:
-
-```{r read-original-data}
-original_data_fname <-
-    "extract-rates-per-100k-pop.xlsx"
-original_data_fullpath <-
-    paste0(data_dir_path, original_data_fname)
-
-# read-in the data
-original_data_df <- read_excel( # original analyses were nonheroin-opioid only,
-                                # so we select the appropriate sheet below
-    path = original_data_fullpath,
-    sheet = excel_sheets(original_data_fullpath)[1]
-    ) %>%
-    slice(-1) %>% # remove first non-data row
-    select("OPIOID", paste0("...", ((0:(2023 - 2015)) * 4) + 5)) %>%
-    # the above formula helps us access the autogenerated column #s of our
-    # desired measure: avg monthly overdose rates per 100K population
-    rename("Locality" = "OPIOID") %>% # rename OPIOID col to Locality
-    mutate(Locality =
-        str_to_upper(str_replace_all(Locality, "[^a-zA-Z0-9 ]", ""))
-    ) %>%
-    # the above line is to remove special characters (i.e., double-dagger) and
-    # uppercase all locality names to avoid name case issues during merge
-    rename_with(
-        .fn = function(original_colname) {
-            # extract number from colname
-            original_colname_num <- original_colname %>%
-                substr(., 4, nchar(.)) %>% # remove leading "..."
-                as.numeric()
-
-            # transform number to year number, as a character type 
-            new_colname <- as.character(2015 + (original_colname_num - 5) / 4)
-
-            return(new_colname)
-        },
-        .cols = 2:last_col() # ignore OPIOID col
-    ) %>%
-    pivot_longer( # make data long format
-        cols = as.character(2015:2023),
-        names_to = "Year", # ensure this is updated to match the data timeframe
-        values_to = "pub_rate_per_100K" # Avg Monthly Opioid ED Visit Rate per
-                                        # 100K Population, measure used in pub
-    ) %>%
-    mutate(
-            Year = as.numeric(Year), # convert Year back to numeric for merge
-            pub_rate_per_100K = as.numeric(pub_rate_per_100K) # was character
-    )
-
-# merge-in other relevant data from combined_edvisits_df
-replication_df <- combined_edvisits_df %>%
-    left_join(original_data_df) %>%
-    mutate(
-        annual_pub_rate_per_100K = 12 * pub_rate_per_100K,
-        error_from_pub_rate = annual_pub_rate_per_100K - nonheroin_opioid_rate_per_100K,
-        rel_error_from_pub_rate = error_from_pub_rate / annual_pub_rate_per_100K
-    )
-```
-
-If we are interested, we can look at the differences between our calculated data and the VDH data for annual rates per 100K:
-
-```{r present-rates-calc-vs-VDH}
-replication_df %>%
-    select(Locality, Year, nonheroin_opioid_rate_per_100K, annual_pub_rate_per_100K, error_from_pub_rate, rel_error_from_pub_rate) %>%
-    knitr::kable(style = "html")
-```
-
-And below, we run models on our newly-created `replication_df` to generate results from the original data used in the publication.
-
-```{r run-models-for-original-data}
-# model 1: unconditional (growth)
-model_1_pub <- replication_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    lme( # nlme implementation
-        fixed = pub_rate_per_100K ~ 1,
-        random = ~ 1 | Locality
-    )
-    # lmer( # lme4 implementation
-    #     formula = pub_rate_per_100K ~ (1 | Locality),
-    # )
-
-summary(model_1_pub)
-
-# model 2: fixed growth
-model_2_pub <- replication_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
-    lme(
-        fixed = pub_rate_per_100K ~ Year.adj,
-        random = ~ 1 | Locality
-    )
-    # lmer( # lme4 implementation
-    #     formula = pub_rate_per_100K ~ Year.adj + (1 | Locality),
-    # )
-
-summary(model_2_pub)
-
-# model 3: random growth
-model_3_pub <- replication_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
-    lme(
-        fixed = pub_rate_per_100K ~ Year.adj,
-        random = ~ Year.adj | Locality
-    )
-    # lmer( # lme4 implementation
-    #     formula = pub_rate_per_100K ~ (Year.Adj | Locality) + (1 | Locality),
-    # )
-
-summary(model_3_pub)
-
-# model 4: random growth w/ TVCs
-model_4_pub <- replication_df %>%
-    filter(Locality != "VIRGINIA") %>%
-    filter(Year %in% 2016:2021) %>% # match w/ publication
-    na.omit() %>% # 1 set of z-scores is NA
-    mutate(Year.adj = Year - 2015) %>% # for interpretation
-    lme(
-        fixed = pub_rate_per_100K ~ Year.adj + zHB + zCC + zSEF + zPE,
-        random = ~ Year.adj | Locality
-    )
-    # lmer( # lme4 implementation
-    #      formula = pub_rate_per_100K ~ zHB + zCC + zSEF + zPE 
-    #         + (Year.adj | Locality) + (1 | Locality),
-    # )
-
-summary(model_4_pub)
-```
-
-
