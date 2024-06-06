@@ -1,0 +1,222 @@
+---
+title: Forecasting Evaluation
+subtitle: Opioid overdose emergency department visits in Virginia counties.
+author: Faysal Shaikh
+date: Last updated `r format(Sys.Date(), "%B %d, %Y")`
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+---
+
+The goal of this document is to evaluate various models at forecasting annual opioid overdose emergency department visit rates (per 100K population) in Virginia counties.
+
+```{r load_relevant_packages, warning=F, message=F}
+library(tidyverse)
+library(readxl)
+library(sf)
+library(broom)
+library(nlme)
+# library(lme4)
+# library(stringr)
+library(tsibble)
+library(fable) # also loads fabletools
+# library(feasts)
+```
+
+```{r prelim_config, echo=F}
+options(scipen = 999)
+set.seed(667)
+```
+
+We begin by loading-in our data from our previous multi-level modeling notebook (after it had been preprocessed):
+```{r load_data}
+setwd('..')
+combined_edvisits_df <- readRDS('./data/VA-county-opioid-ED-visits-2015-to-2023.RDS') %>%
+    mutate(Year.adj = Year - 2015) %>% # implement global year-adjustment here
+    filter(Locality != 'VIRGINIA') # to make things easier, county-only
+```
+
+We want to use the tools described in fpp3, and for that we will need to create a tsibble from our original dataframe object:
+```{r convert_to_tsibble}
+combined_edvisits_tsibble <- combined_edvisits_df %>%
+    as_tsibble(key = Locality, index = Year)
+```
+
+As described in fpp3, we can use the `stretch_tsibble()` function to iteratively create training-test splits for our time-series data. We will start with an `.init` value of 7 (2015 to 2021), to create our splits that allow us the following 3 situations:
+
+ - situation 1: train with data from 2015 to 2021, and test/forecast on data from 2022
+
+ - situation 2: train with data from 2015 to 2022, and test/forecast on data from 2023
+
+ - situation 3: all data used for training (what we had been doing previously without train-test splitting)
+
+```{r create_1-year_train-test_splits}
+forecast_1_year_splits <- combined_edvisits_tsibble %>%
+    stretch_tsibble(.init = 7, .step = 1) %>%
+    filter(.id != 3) %>% # remove the full training fold
+    relocate(.id) # move fold ID to beginning
+```
+
+The only desired situation this doesn't satisfy, is our desire for a 2-year forecast interval when training on data from 2015 to 2021 and testing/forecasting on data for 2022 and 2023 together. We handle this below:
+
+```{r create_2-year_train-test_splits}
+forecast_2_year_splits <- combined_edvisits_tsibble %>%
+    stretch_tsibble(.init = 7, .step = 2) %>%
+    filter(.id != 2) %>% # remove the full training fold
+    relocate(.id) # move fold ID to beginning
+```
+
+We are now prepared to train and evaluate our models' accuracy. We will start with some baseline models.
+
+```{r forecast_baseline_1-year}
+# naive models (repeat last value)
+naive_1_year_forecast_2022 <- forecast_1_year_splits %>%
+    filter(.id == 1) %>% # select training 2015 to 2021
+    model(NAIVE(ed_visit_rate_per_100K.combined_annual)) %>%
+    forecast(h = 1) %>%
+    group_by(.id)
+
+naive_1_year_forecast_2023 <- forecast_1_year_splits %>%
+    filter(.id == 2) %>% # select training 2015 to 2022
+    model(NAIVE(ed_visit_rate_per_100K.combined_annual)) %>%
+    forecast(h = 1) %>%
+    group_by(.id)
+
+# drift models (random walk w/ drif)
+drift_1_year_forecast_2022 <- forecast_1_year_splits %>%
+    filter(.id == 1) %>% # select training 2015 to 2021
+    model(RW(ed_visit_rate_per_100K.combined_annual ~ drift())) %>%
+    forecast(h = 1) %>%
+    group_by(.id)
+
+drift_1_year_forecast_2023 <- forecast_1_year_splits %>%
+    filter(.id == 2) %>% # select training 2015 to 2022
+    model(RW(ed_visit_rate_per_100K.combined_annual ~ drift())) %>%
+    forecast(h = 1) %>%
+    group_by(.id)
+```
+
+Below, we calculate and visualize those errors:
+
+```{r forecast_error_baselines_1-year}
+naive_1_year_error_2022 <- naive_1_year_forecast_2022[['.mean']] -
+    (
+        combined_edvisits_df %>%
+        filter(Year == 2022) %>%
+        ungroup() %>% # otherwise, keeps grouped cols (Year, Locality)
+        select(ed_visit_rate_per_100K.combined_annual) %>%
+        unlist() %>%
+        as.numeric()
+    )
+
+naive_1_year_error_2023 <- naive_1_year_forecast_2023[['.mean']] -
+    (
+        combined_edvisits_df %>%
+        filter(Year == 2023) %>%
+        ungroup() %>% # otherwise, keeps grouped cols (Year, Locality)
+        select(ed_visit_rate_per_100K.combined_annual) %>%
+        unlist() %>%
+        as.numeric()
+    )
+
+drift_1_year_error_2022 <- drift_1_year_forecast_2022[['.mean']] -
+    (
+        combined_edvisits_df %>%
+        filter(Year == 2022) %>%
+        ungroup() %>% # otherwise, keeps grouped cols (Year, Locality)
+        select(ed_visit_rate_per_100K.combined_annual) %>%
+        unlist() %>%
+        as.numeric()
+    )
+
+drift_1_year_error_2023 <- drift_1_year_forecast_2023[['.mean']] -
+    (
+        combined_edvisits_df %>%
+        filter(Year == 2023) %>%
+        ungroup() %>% # otherwise, keeps grouped cols (Year, Locality)
+        select(ed_visit_rate_per_100K.combined_annual) %>%
+        unlist() %>%
+        as.numeric()
+    )
+```
+
+Now, we may be interested in producing forecasts using our almost-fully-specified linear mixed-effects model. (If we used the model that included CHR data, it would require us knowing the future values of those measures, and would thus be *ex post* predictions. Instead, we opt for *ex ante* forecasts with our slightly-less-specified model.) We first generate 2022 forecasts following training from 2015 to 2021 data, then generate 2023 forecasts following training rom 2015 to 2022 data.
+
+```{r forecast_LME_1-year_2022}
+LME_1_year_forecast_2022 <- forecast_1_year_splits %>%
+    filter(.id == 1) %>% # select training 2015 to 2021
+    na.omit() %>%
+    lme(
+        fixed = ed_visit_rate_per_100K.combined_annual ~
+            Year.adj,
+        random = ~ Year.adj | Locality
+    ) %>%
+    predict(
+        combined_edvisits_tsibble %>%
+        filter(Year == 2022)
+    ) %>%
+    as.numeric()
+
+LME_1_year_forecast_2023 <- forecast_1_year_splits %>%
+    filter(.id == 2) %>% # select training 2015 to 2022
+    na.omit() %>%
+    lme(
+        fixed = ed_visit_rate_per_100K.combined_annual ~
+            Year.adj,
+        random = ~ Year.adj | Locality
+    ) %>%
+    predict(
+        combined_edvisits_tsibble %>%
+        filter(Year == 2023)
+    ) %>%
+    as.numeric()
+```
+
+Below, we calculate and visualize the error of those forecasts:
+
+```{r forecast_error_LME_1-year}
+LME_1_year_error_2022 <- LME_1_year_forecast_2022 - 
+    (
+        combined_edvisits_df %>%
+        filter(Year == 2022) %>%
+        ungroup() %>% # otherwise, keeps grouped cols (Year, Locality)
+        select(ed_visit_rate_per_100K.combined_annual) %>%
+        unlist() %>%
+        as.numeric()
+    )
+
+LME_1_year_error_2023 <- LME_1_year_forecast_2023 - 
+    (
+        combined_edvisits_df %>%
+        filter(Year == 2023) %>%
+        ungroup() %>% # otherwise, keeps grouped cols (Year, Locality)
+        select(ed_visit_rate_per_100K.combined_annual) %>%
+        unlist() %>%
+        as.numeric()
+    )
+```
+
+
+
+
+
+```{r forecast_LME_2-years, eval=F}
+# this is not working correctly
+# currently returning a point forecast
+# supposed to return 2 points
+# (for 2022 and 2023, separately)
+LME_2_years_forecast <- forecast_2_year_splits %>%
+    filter(.id == 1) %>% # select training 2015 to 2021
+    na.omit() %>%
+    lme(
+        fixed = ed_visit_rate_per_100K.combined_annual ~
+            Year.adj,
+        random = ~ Year.adj | Locality
+    ) %>%
+    predict(
+        combined_edvisits_tsibble %>%
+        filter(Year >= 2022)
+    )
+```
