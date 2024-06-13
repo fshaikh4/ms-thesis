@@ -1,0 +1,208 @@
+---
+title: Residual Diagnostics
+subtitle: Opioid overdose emergency department visit rates in Virginia counties.
+author: Faysal Shaikh
+date: Last updated `r format(Sys.Date(), "%B %d, %Y")`
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+---
+
+The goal of this document is to perform residual diagnostics on our various mixed-effects models to ensure we are not violating any assumptions of this technique.
+
+```{r load_relevant_packages, warning=F, message=F}
+library(tidyverse)
+library(readxl)
+library(sf)
+library(broom)
+library(nlme)
+# library(lme4)
+# library(stringr)
+library(tsibble)
+library(fable) # also loads fabletools
+# library(feasts)
+```
+
+```{r prelim_config, echo=F}
+options(scipen = 999)
+set.seed(667)
+```
+
+We begin by loading-in our data from our previous multi-level modeling notebook (after it had been preprocessed):
+```{r load_data}
+setwd('D:/Codebase/ms-thesis') # hardcoded for now, for laptop
+combined_edvisits_df <- readRDS('./data/VA-county-opioid-ED-visits-2015-to-2023.RDS') %>%
+    mutate(Year.adj = Year - 2015) %>% # implement global year-adjustment here
+    filter(Locality != 'VIRGINIA') # to make things easier, county-only
+```
+
+Our dataset involve certain localities which are combined and replicated. This seems to be in scenarios where a zip code may be considered to belong to any of multiple localities, so the data deal with this by simply assigning it to the largest locality in the merge (and replicating those combined numbers for the constituent localities). Without removing these replicates, we are potentially oversampling those data points in our model. 
+
+The list of replicated localities is below:
+
+ - Alleghany County and Covington City
+ - Albemarle County and Charlottesville City
+ - Augusta County, Staunton City, and Waynesboro City
+ - Chesterfield County and Colonial Heights City
+ - Frederick County and Winchester City
+ - Fairfax County, Fairfax City, and Falls Church City
+ - Grayson County and Galax City
+ - Greensville County and Emporia City
+ - Henry County and Martinsville City
+ - Montgomery County and Radford City
+ - Pittsylvania County and Danville City
+ - Prince George County, Hopewell City, and Petersburg City
+ - Prince William County, Manassas City, and Manassas Park City
+ - Roanoke County, Roanoke City, and Salem City
+ - Rockingham County, Buena Vista City, and Lexington City
+ - Southampton County and Franklin City
+ - Washington County and Bristol City
+ - Wise County and Norton City
+
+```{r recode-remove-replicate-localities}
+# recode replicates for removal
+combined_edvisits_df[['Locality']] <- combined_edvisits_df[['Locality']] %>%
+    recode(
+        'ALLEGHANY COUNTY' = 'ALLEGHANY COUNTY AND COVINGTON CITY',
+        'COVINGTON CITY' = '(REMOVE) COVINGTON CITY',
+        'ALBEMARLE COUNTY' = 'ALBEMARLE COUNTY AND CHARLOTTESVILLE CITY',
+        'CHARLOTTESVILLE CITY' = '(REMOVE) CHARLOTTESVILLE CITY',
+        'AUGUSTA COUNTY' = 'AUGUSTA COUNTY, STAUNTON CITY, AND WAYNESBORO CITY',
+        'STAUNTON CITY' = '(REMOVE) STAUNTON CITY',
+        'WAYNESBORO CITY' = '(REMOVE) WAYNESBORO CITY',
+        'CHESTERFIELD COUNTY' = 'CHESTERFIELD COUNTY AND COLONIAL HEIGHTS CITY',
+        'COLONIAL HEIGHTS CITY' = '(REMOVE) COLONIAL HEIGHTS CITY',
+        'FREDERICK COUNTY' = 'FREDERICK COUNTY AND WINCHESTER CITY',
+        'WINCHESTER CITY' = '(REMOVE) WINCHESTER CITY',
+        'FAIRFAX COUNTY' = 'FAIRFAX COUNTY, FAIRFAX CITY, AND FALLS CHURCH CITY',
+        'FAIRFAX CITY' = '(REMOVE) FAIRFAX CITY',
+        'FALLS CHURCH CITY' = '(REMOVE) FALLS CHURCH CITY',
+        'GRAYSON COUNTY' = 'GRAYSON COUNTY AND GALAX CITY',
+        'GALAX CITY' = '(REMOVE) GALAX CITY',
+        'GREENSVILLE COUNTY' = 'GREENSVILLE COUNTY AND EMPORIA CITY',
+        'EMPORIA CITY' = '(REMOVE) EMPORIA CITY',
+        'HENRY COUNTY' = 'HENRY COUNTY AND MARTINSVILLE CITY',
+        'MARTINSVILLE CITY' = '(REMOVE) MARTINSVILLE CITY',
+        'MONTGOMERY COUNTY' = 'MONTGOMERY COUNTY AND RADFORD CITY',
+        'RADFORD CITY' = '(REMOVE) RADFORD CITY',
+        'PITTSYLVANIA COUNTY' = 'PITTSYLVANIA COUNTY AND DANVILLE CITY',
+        'DANVILLE CITY' = '(REMOVE) DANVILLE CITY',
+        'PRINCE GEORGE COUNTY' = 'PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY',
+        'HOPEWELL CITY' = '(REMOVE) HOPEWELL CITY',
+        'PETERSBURG CITY' = '(REMOVE) PETERSBURG CITY',
+        'PRINCE WILLIAM COUNTY' = 'PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY',
+        'MANASSAS CITY' = '(REMOVE) MANASSAS CITY',
+        'MANASSAS PARK CITY' = '(REMOVE) MANASSAS PARK CITY',
+        'ROANOKE COUNTY' = 'ROANOKE COUNTY, ROANOKE CITY, AND SALEM CITY',
+        'ROANOKE CITY' = '(REMOVE) ROANOKE CITY',
+        'SALEM CITY' = '(REMOVE) SALEM CITY',
+        'ROCKINGHAM COUNTY' = 'ROCKINGHAM COUNTY AND HARRISONBURG CITY',
+        'HARRISONBURG CITY' = '(REMOVE) HARRISONBURG CITY',
+        'ROCKBRIDGE COUNTY' = 'ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY',
+        'BUENA VISTA CITY' = '(REMOVE) BUENA VISTA CITY',
+        'LEXINGTON CITY' = '(REMOVE) LEXINGTON CITY',
+        'SOUTHAMPTON COUNTY' = 'SOUTHAMPTON COUNTY AND FRANKLIN CITY',
+        'FRANKLIN CITY' = '(REMOVE) FRANKLIN CITY',
+        'WASHINGTON COUNTY' = 'WASHINGTON COUNTY AND BRISTOL CITY',
+        'BRISTOL CITY' = '(REMOVE) BRISTOL CITY',
+        'WISE COUNTY' = 'WISE COUNTY AND NORTON CITY',
+        'NORTON CITY' = '(REMOVE) NORTON CITY'
+    )
+
+# remove replicates via regular expression
+combined_edvisits_df <- combined_edvisits_df %>% 
+    filter(!grepl('\\(REMOVE\\)', Locality)) # remove localities coded for removal
+```
+
+There are some datapoints that additionally have issues with data quality for specifically the measure of our interest, opioid overdose ED visit rates per 10K ED visits. There are given below (converted into our combined localities described above):
+
+ - Appomattox
+ - Buchanan
+ - Dickenson
+ - Dinwiddie
+ - Frederick
+ - Gloucester
+ - Greensville
+ - Hampton
+ - Harrisonburg
+ - Henrico
+ - James City
+ - Lancaster
+ - Lexington
+ - Manassas Park
+ - Mathews
+ - Nelson
+ - Northumberland
+ - Orange
+ - Prince Edward
+ - Prince George
+ - Prince William
+ - Richmond City
+ - Rockbridge
+ - Rockingham
+ - Spotsylvania
+ - Sussex
+ - Winchester
+ - York
+
+```{r recode-remove-quality-issues-localities}
+# recode localities with data quality issues for removal
+combined_edvisits_df[['Locality']] <- combined_edvisits_df[['Locality']] %>%
+    recode(
+        'APPOMATTOX COUNTY' = '(QUALITY) APPOMATTOX COUNTY',
+        'BUCHANAN' = '(QUALITY) BUCHANAN COUNTY',
+        'DICKENSON'= '(QUALITY) DICKENSON COUNTY',
+        'DINWIDDIE COUNTY' = '(QUALITY) DINWIDDIE COUNTY',
+        'FREDERICK COUNTY AND WINCHESTER CITY' = '(QUALITY) FREDERICK COUNTY AND WINCHESTER CITY',
+        'GLOUCESTER COUNTY' = '(QUALITY) GLOUCESTER COUNTY',
+        'GREENSVILLE COUNTY AND EMPORIA CITY' = '(QUALITY) GREENSVILLE COUNTY AND EMPORIA CITY',
+        'HAMPTON CITY' = '(QUALITY) HAMPTON CITY',
+        'HENRICO COUNTY' = '(QUALITY) HENRICO COUNTY',
+        'JAMES CITY COUNTY' = '(QUALITY) JAMES CITY COUNTY',
+        'LANCASTER COUNTY' = '(QUALITY) LANCASTER COUNTY',
+        'MATHEWS COUNTY' = '(QUALITY) MATHEWS COUNTY',
+        'NELSON COUNTY' = '(QUALITY) NELSON CITY',
+        'NORTHUMBERLAND COUNTY' = '(QUALITY) NORTHUMBERLAND COUNTY',
+        'ORANGE COUNTY' = '(QUALITY) ORANGE COUNTY',
+        'PRINCE EDWARD COUNTY' = '(QUALITY) PRINCE EDWARD COUNTY',
+        'PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY' = '(QUALITY) PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY',
+        'PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY' = '(QUALITY) PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY',
+        'RICHMOND CITY' = '(QUALITY) RICHMOND CITY',
+        'ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY' = '(QUALITY) ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY',
+        'ROCKHINGHAM COUNTY AND HARRISONBURG CITY' = '(QUALITY) ROCKINGHAM COUNTY AND HARRISONBURG CITY',
+        'SPOTSYLVANIA COUNTY' = '(QUALITY) SPOTSYLVANIA COUNTY',
+        'SUSSEX COUNTY' = '(QUALITY) SUSSEX COUNTY',
+        'YORK COUNTY' = '(QUALITY) YORK COUNTY'
+    )
+
+# remove localities with data quality issues via regular expression
+combined_edvisits_df <- combined_edvisits_df %>% 
+    filter(!grepl('\\(QUALITY\\)', Locality)) # remove localities coded for removal
+```
+
+```{r plot_localities_rate-per-10k-ED-visits, eval = F}
+# run this by hand to generate plots as images (more readable)
+combined_edvisits_df %>% # free_y version
+    ggplot() + 
+    geom_line(mapping = aes(x = Year.adj, y = ed_visit_rate_per_100K.nonheroin_opioid)) +
+    facet_wrap(~ Locality, scales = 'free_y') + # free_y allows different y-axes
+    theme(strip.text.x = element_text(size = 6))
+
+combined_edvisits_df %>% # regular, static y-axis version
+    ggplot() + 
+    geom_line(mapping = aes(x = Year.adj, y = ed_visit_rate_per_100K.nonheroin_opioid)) +
+    facet_wrap(~ Locality) +
+    theme(strip.text.x = element_text(size = 6))
+```
+
+---
+
+# List of things that need to get done before thesis meeting
+ - remove replicated localities from data
+ - perform residual diagnostics for each of the published models, using all data
+ - perform residual diagnostics for the main model, using all data
+ - perform residual diagnostics for 1 model type, using data from 2015 to 2021 to predict 2022
+  - perform residual diagnostic for same model as above, using data from 2015 to 2022 to predict 2023, and show forecast performance
+  - perform residual diagnostic for the same model as above, using data from 2015 to 2021 to predict both 2022 and 2023, and show forecast performance

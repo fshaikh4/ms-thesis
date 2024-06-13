@@ -142,6 +142,8 @@ drift_1_year_error_2023 <- drift_1_year_forecast_2023[['.mean']] -
     )
 ```
 
+We find that for our 2022 1-year forecasts (trained on data from 2015 to 2021), our naive model exhibits a mean absolute error of `r (1 / length(naive_1_year_error_2022 %>% na.omit())) * naive_1_year_error_2022 %>% na.omit() %>% abs() %>% sum()`, and our drift model a mean absolute error of `r (1 / length(drift_1_year_error_2022 %>% na.omit())) * drift_1_year_error_2022 %>% na.omit() %>% abs() %>% sum()`. Additionally, for our 2023 1-year forecasts (trained on data from 2015 to 2022), our naive model exhibits a mean absolute error of `r (1 / length(naive_1_year_error_2023 %>% na.omit())) * naive_1_year_error_2023 %>% na.omit() %>% abs() %>% sum()`, and our drift model a mean absolute error of `r (1 / length(drift_1_year_error_2023 %>% na.omit())) * drift_1_year_error_2023 %>% na.omit() %>% abs() %>% sum()`.
+
 Now, we may be interested in producing forecasts using our almost-fully-specified linear mixed-effects model. (If we used the model that included CHR data, it would require us knowing the future values of those measures, and would thus be *ex post* predictions. Instead, we opt for *ex ante* forecasts with our slightly-less-specified model.) We first generate 2022 forecasts following training from 2015 to 2021 data, then generate 2023 forecasts following training rom 2015 to 2022 data.
 
 ```{r forecast_LME_1-year_2022}
@@ -198,8 +200,7 @@ LME_1_year_error_2023 <- LME_1_year_forecast_2023 -
     )
 ```
 
-
-
+We find that for our 2022 1-year forecast (model trained on data from 2015 to 2021), that the mean absolute error is `r (1 / length(LME_1_year_error_2022 %>% na.omit())) * LME_1_year_error_2022 %>% na.omit() %>% abs() %>% sum()`. Additionally, for our 2023 1-year forecase (model trained on data from 2015 to 2022), we find mean absolute error as `r (1 / length(LME_1_year_error_2023 %>% na.omit())) * LME_1_year_error_2023 %>% na.omit() %>% abs() %>% sum()`.
 
 
 ```{r forecast_LME_2-years, eval=F}
