@@ -30,6 +30,8 @@ options(scipen = 999)
 set.seed(667)
 ```
 
+# Data loading and preprocessing (based on inclusion/exclusion criteria)
+
 We begin by loading-in our data from our previous multi-level modeling notebook (after it had been preprocessed):
 ```{r load_data}
 setwd('D:/Codebase/ms-thesis') # hardcoded for now, for laptop
@@ -182,6 +184,23 @@ combined_edvisits_df <- combined_edvisits_df %>%
     filter(!grepl('\\(QUALITY\\)', Locality)) # remove localities coded for removal
 ```
 
+This leaves us with a final list of the following `r combined_edvisits_df[['Locality']] |> unique() |> length()` city/county localities:
+
+`r combined_edvisits_df[['Locality']] |> unique() |> as.list()`.
+
+Here they are, mapped: (BROKEN; NEED TO FIX)
+
+```{r map_localities_included}
+```
+
+# Full-dataset data exploration and model specification
+
+To begin, we will make our work as close to prior published work as possible. Though our outcome variable is slightly different (published: average monthly opioid overdose ED visit rates per 100k population; our: average monthly opioid overdose ED visit rates per 10k ED visits, soon-to-be-replaced by an annual-aggregated opioid overdose ED visit rates per 10k ED visits), we can mimick the model specification for each of our mixed model types (in increasing sophistication/terms: unconditional growth, fixed growth, random growth, and random growth with time-varying covariates). Before this, however, we should explore our outcome variable.
+
+### Data exploration
+
+We begin by creating 2 facet plots, one with a fixed y-axis for all county/city localities (to show trends across county/city localities on the same scale) and one with a "free" y-axis for all county/city localities (the axis "zooms-in" to the scale of a given county/city locality's data, to see more representatively any ups and downs).
+
 ```{r plot_localities_rate-per-10k-ED-visits, eval = F}
 # run this by hand to generate plots as images (more readable)
 combined_edvisits_df %>% # free_y version
@@ -195,7 +214,38 @@ combined_edvisits_df %>% # regular, static y-axis version
     geom_line(mapping = aes(x = Year.adj, y = ed_visit_rate_per_100K.nonheroin_opioid)) +
     facet_wrap(~ Locality) +
     theme(strip.text.x = element_text(size = 6))
+
+# TODO:
+# - save files to output folder
+# - implement higher-resolution (potentially SVG?) images
+# - add images to document via markdown or HTML commands
 ```
+
+Now that we have explored our data a little, let's get into specifying our mixed models and looking at their residuals.
+
+### Model specification
+
+We provide the same types of models as before, called as such:
+
+ - Unconditional growth: intecept-only model with random intercept
+ 
+ - Fixed growth: intercept and time-slope model with random intercept
+ 
+ - Random growth: intercept and time-slope model with random intercept and slope
+
+ - Random growth with time-varying covariates: self-explanatory, though we may need to look into the validity of using time-varying covariates in a model like this (potentially looking at additional residual diagnostics).
+
+Now that we have specified our models, let's engage in examining residuals and performing diagnostics.
+
+### Residual diagnostics
+
+For each type of model, we are interested in diagnosing residuals in accordance with the guidance found in the [Introduction to Multilevel Modeling online text](https://www.learn-mlms.com/12-module-12.html#an-aside-extracting-residuals):
+
+ - level-1 residuals (at individual data-point level) are independent of level-1 predictors, based on visual inspection of scatterplots and/or correlation coefficients
+ - level-1 residuals are normally distributed, based on visual inspection of quantile-quantile (qq) plots and/or Shapiro-Wilk test for normality
+ - level-2 residuals (at the group level, in our case, for each county/city locality) are independent of one another and of level-2 predictors, based on visual inspection of scatterplots and/or correlation coefficients
+   - what are level-2 predictors? (time-varying covariates? random effects?)
+ - THIS LIST IS UNFINISHED; GO THROUGH WORD DOCUMENT AND ADD MISSING BULLETS
 
 ---
 
