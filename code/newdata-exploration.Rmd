@@ -1,0 +1,498 @@
+---
+title: Exploratory Data Analysis and Preliminary Results
+subtitle: Opioid overdose emergency department (ED) visit rates per 10k ED visits in Virginia city/county localities from 2015 to 2023
+author: Faysal Shaikh
+date: Last updated `r format(Sys.Date(), "%B %d, %Y")`
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+---
+
+This document covers exploratory data analysis, model fitting, model diagnostics, and preliminary results for our study on opioid overdose ED visit rates per 10k ED visits in Virginia city/county localities.
+
+```{r load_relevant_packages, warning=F, message=F}
+library(tidyverse)
+library(readxl)
+library(sf)
+library(broom)
+library(nlme)
+# library(lme4)
+# library(stringr)
+library(tsibble)
+library(fable) # also loads fabletools
+# library(feasts)
+library(energy) # multivariate normal test
+```
+
+# Data Sources
+
+Opioid overdose ED visit rates per 10k ED visit rates for Virginia city/county localities from 2015 to 2023 were obtained via data request to the VDH Division of Surveillance and Investigation, Office of Epidemiology.
+
+We also include geographic data in a shapefile of 2023 Virginia Administrative Boundaries [obtained from the Virginia Geographic Information Network site](https://vgin.vdem.virginia.gov/datasets/777890ecdb634d18a02eec604db522c6/about) for later use in exploratory chloropleth mapping.
+
+We handle project directory and data source filepath specification immediately below, before performing data exploration on our 2 major data sources separately in the proceeding sections.  Notably, we also handle data source filepath specification for the aforementioned geographic data.
+
+```{r specify_data_paths}
+# path specification: data directory
+data_dir_path <- # uncomment appropriate option below
+    "d:/Codebase/ms-thesis/data/" # laptop
+    # "f:/Codebase/ms-thesis/data/" # desktop
+
+# filename specification: overdose ED visits
+vdh_ed_visits_fname <-
+    "Opioid-and-Heroin-ED-Visit-rate_VA_2015-2023.xlsx"
+
+# filename specification: Virginia administrative boundaries shapefiles
+va_admin_bound_fname <-
+    "VirginiaAdministrativeBoundary.shp/VirginiaCounty.shp"
+
+# filename specification: County Health Rankings & Roadmaps ("CHR") data
+chr_fnames <- list(
+    "2015" = "2015 County Health Rankings Virginia Data - v3.xls",
+    "2016" = "2016 County Health Rankings Virginia Data - v3.xls",
+    "2017" = "2017 County Health Rankings Virginia Data - v2.xls",
+    "2018" = "2018 County Health Rankings Virginia Data - v3.xls",
+    "2019" = "2019 County Health Rankings Virginia Data - v1_0.xls",
+    "2020" = "2020 County Health Rankings Virginia Data - v1_0.xlsx",
+    "2021" = "2021 County Health Rankings Virginia Data - v1_0.xlsx",
+    "2022" = "2022 County Health Rankings Virginia Data - v2.xlsx",
+    "2023" = "2023 County Health Rankings Virginia Data - v3.xlsx"
+)
+```
+
+## Geography: Virginia Counties
+
+This project examines data on Virginia counties as the primary units of analysis.  As a geographic reference, we include below a labeled map of Virginia counties obtained from [the Virginia Association of Counties (VACO) website](https://www.vaco.org/about/regions/):
+
+![](https://www.vaco.org/wp-content/uploads/2023/04/VACoRegionMap23TransparentReduced.png)
+
+Similarly, we generate our own map of Virginia counties and county-equivalents via the previously mentioned 2023 Virginia Administrative Boundaries shapefile, visualized without additional data below:
+
+```{r read_shapefile}
+va_counties <- # read shapefile
+    st_read(paste0(data_dir_path, va_admin_bound_fname)) %>%
+    mutate(NAMELSAD = str_to_upper(NAMELSAD)) # uppercase names to avoid
+                                              # capitalization merge conflicts
+
+# plot geographic data
+va_counties %>%
+    ggplot() +
+    geom_sf() +
+    theme_void()
+```
+
+We will use this template as the basis for chloropleth exploratory data visualizations throughout this process.
+
+# Data Preprocessing
+
+## Data-Loading from Files
+
+### VDH Opioid Overdose ED Visit Rates per 10k ED Visits Data
+
+```{r read_vdh_ed_visits_data, message=F, warning=F}
+# preparation for reading-in data: VDH opioid overdose ED visits
+vdh_ed_visits_fullpath <-
+    paste0(data_dir_path, vdh_ed_visits_fname) # precombine fname parts
+vdh_ed_visits_sheetslist <-
+    excel_sheets(vdh_ed_visits_fullpath) # get list of worksheet "tabs" for MS
+                                         # Excel workbook file to mask for
+                                         # specific sheet(s)
+
+# reading-in data: VDH opioid overdose ED visits
+vdh_ed_visits_nonheroin_opioid <- read_excel(
+    path = vdh_ed_visits_fullpath,
+    sheet = vdh_ed_visits_sheetslist[2], # locality opioid
+    range = "M5:V138"
+) %>%
+    rename("Locality" = `...1`, `2020` = 7)
+
+# vdh_ed_visits_heroin <- read_excel(
+#     path = vdh_ed_visits_fullpath,
+#     sheet = vdh_ed_visits_sheetslist[3], # locality heroin
+#     range = "M5:V138"
+# ) %>%
+#     rename("Locality" = `...1`, `2020` = 7)
+
+dates_vec <- # derived years date-vector for time masking (as-needed)
+    as.character(2015:2023)
+
+# preprocess locality names (remove special symbols)
+vdh_localities_df <- # derived data frame for geographic masking (as-needed)
+    vdh_ed_visits_nonheroin_opioid["Locality"] %>%
+    lapply(
+        function(x) str_replace_all(x, "[^a-zA-Z0-9 ]", "") # remove special
+                                                            # characters (i.e.,
+                                                            # double-dagger)
+    ) %>%
+    as.data.frame() %>%
+    mutate(Locality = str_to_upper(Locality)) # avoid name case issues for merge
+
+# fix data frame localities
+vdh_ed_visits_nonheroin_opioid["Locality"] <- vdh_localities_df
+# vdh_ed_visits_heroin["Locality"] <- vdh_localities_df
+
+# pivot data to long format
+nonheroin_opioid_long <- vdh_ed_visits_nonheroin_opioid %>%
+    pivot_longer(
+        cols = dates_vec,
+        names_to = "Year",
+        values_to = "Nonheroin-Opioid ED Visit Rates per 10k ED Visits"
+    )
+
+# heroin_long <- vdh_ed_visits_heroin %>%
+#     pivot_longer(
+#         cols = dates_vec,
+#         names_to = "Year",
+#         values_to = "Heroin ED Visit Rates per 10k ED Visits"
+#     )
+```
+
+### National County Health Rankings & Roadmaps Data
+
+```{r read_process_chr_data}
+chr_data_collector <- data.frame(
+    Locality_shortname = character(),
+    `Health Behaviors` = numeric(),
+    `Clinical Care` = numeric(),
+    `Social & Economic Factors` = numeric(),
+    `Physical Environment` = numeric()
+)
+
+for (chosen_year in 2015:2023) { # make sure these years also reflect above
+    chosen_chr_fname <- chr_fnames[as.character(chosen_year)]
+    chosen_chr_fullpath <- paste0(data_dir_path, chosen_chr_fname)
+    chosen_chr_sheetslist <- excel_sheets(chosen_chr_fullpath)
+
+    chosen_chr_raw_data <- read_excel(
+        path = chosen_chr_fullpath,
+        sheet = chosen_chr_sheetslist[3] # Outcomes & Factors SubRankings
+    ) %>%
+        select(
+            `...1`,
+            `Health Behaviors`,
+            `Clinical Care`,
+            `Social & Economic Factors`,
+            `Physical Environment`
+        ) %>%
+        rename("FIPS" = `...1`) %>%
+        slice(-1:-2) %>% # remove first 2 non-data rows
+        mutate(
+            Year = as.numeric(chosen_year),
+            Year.adj = Year - 2015, # for regression interpretation
+            `Health Behaviors` = as.numeric(`Health Behaviors`),
+            `Clinical Care` = as.numeric(`Clinical Care`),
+            `Social & Economic Factors` =
+                as.numeric(`Social & Economic Factors`),
+            `Physical Environment` = as.numeric(`Physical Environment`)
+        )
+
+    chr_data_collector <- chr_data_collector %>%
+        rbind(chosen_chr_raw_data)
+}
+```
+
+## Merge VDH and CHR Data (Using `va_counties` Defined Above)
+
+```{r merge_chr_data}
+merged_nonheroin_opioid_edvisits_df <- va_counties %>%
+    left_join(nonheroin_opioid_long, by = join_by(NAMELSAD == Locality)) %>%
+    mutate(Year = as.numeric(Year)) %>% # for some reason, originally character
+    left_join(chr_data_collector, by = join_by(STCOFIPS == FIPS, Year)) %>%
+    rename(
+        "Locality" = "NAMELSAD",
+        "zHB" = "Health Behaviors",
+        "zCC" = "Clinical Care",
+        "zSEF" = "Social & Economic Factors",
+        "zPE" = "Physical Environment",
+        "outcome_rate" = `Nonheroin-Opioid ED Visit Rates per 10k ED Visits`
+    )
+
+# merged_heroin_edvisits_df <- va_counties %>%
+#     left_join(heroin_long, by = join_by(NAMELSAD == Locality)) %>%
+#     mutate(Year = as.numeric(Year)) %>% # for some reason, originally character
+#     left_join(chr_data_collector, by = join_by(STCOFIPS == FIPS, Year)) %>%
+#     rename(
+#         "Locality" = "NAMELSAD",
+#         "zHB" = "Health Behaviors",
+#         "zCC" = "Clinical Care",
+#         "zSEF" = "Social & Economic Factors",
+#         "zPE" = "Physical Environment"
+#     )
+```
+
+At this point, we have all relevant data collected into a single data frame, and we can proceed with further preprocessing steps.
+
+## Filtering based on inclusion/exclusion criteria
+
+Our dataset involve certain localities which are combined and replicated. This seems to be in scenarios where a zip code may be considered to belong to any of multiple localities, so the data deal with this by simply assigning it to the largest locality in the merge (and replicating those combined numbers for the constituent localities). Without removing these replicates, we are potentially oversampling those data points in our model. 
+
+The list of replicated localities is below:
+
+ - Alleghany County and Covington City
+ - Albemarle County and Charlottesville City
+ - Augusta County, Staunton City, and Waynesboro City
+ - Chesterfield County and Colonial Heights City
+ - Frederick County and Winchester City
+ - Fairfax County, Fairfax City, and Falls Church City
+ - Grayson County and Galax City
+ - Greensville County and Emporia City
+ - Henry County and Martinsville City
+ - Montgomery County and Radford City
+ - Pittsylvania County and Danville City
+ - Prince George County, Hopewell City, and Petersburg City
+ - Prince William County, Manassas City, and Manassas Park City
+ - Roanoke County, Roanoke City, and Salem City
+ - Rockingham County, Buena Vista City, and Lexington City
+ - Southampton County and Franklin City
+ - Washington County and Bristol City
+ - Wise County and Norton City
+
+```{r recode-remove-replicate-localities}
+# recode replicates for removal
+merged_nonheroin_opioid_edvisits_df[["Locality"]] <-
+    merged_nonheroin_opioid_edvisits_df[["Locality"]] %>%
+    recode(
+        "ALLEGHANY COUNTY" = "ALLEGHANY COUNTY AND COVINGTON CITY",
+        "COVINGTON CITY" = "(REMOVE) COVINGTON CITY",
+        "ALBEMARLE COUNTY" = "ALBEMARLE COUNTY AND CHARLOTTESVILLE CITY",
+        "CHARLOTTESVILLE CITY" = "(REMOVE) CHARLOTTESVILLE CITY",
+        "AUGUSTA COUNTY" = "AUGUSTA COUNTY, STAUNTON CITY, AND WAYNESBORO CITY",
+        "STAUNTON CITY" = "(REMOVE) STAUNTON CITY",
+        "WAYNESBORO CITY" = "(REMOVE) WAYNESBORO CITY",
+        "CHESTERFIELD COUNTY" = "CHESTERFIELD COUNTY AND COLONIAL HEIGHTS CITY",
+        "COLONIAL HEIGHTS CITY" = "(REMOVE) COLONIAL HEIGHTS CITY",
+        "FREDERICK COUNTY" = "FREDERICK COUNTY AND WINCHESTER CITY",
+        "WINCHESTER CITY" = "(REMOVE) WINCHESTER CITY",
+        "FAIRFAX COUNTY" = "FAIRFAX COUNTY, FAIRFAX CITY, AND FALLS CHURCH CITY",
+        "FAIRFAX CITY" = "(REMOVE) FAIRFAX CITY",
+        "FALLS CHURCH CITY" = "(REMOVE) FALLS CHURCH CITY",
+        "GRAYSON COUNTY" = "GRAYSON COUNTY AND GALAX CITY",
+        "GALAX CITY" = "(REMOVE) GALAX CITY",
+        "GREENSVILLE COUNTY" = "GREENSVILLE COUNTY AND EMPORIA CITY",
+        "EMPORIA CITY" = "(REMOVE) EMPORIA CITY",
+        "HENRY COUNTY" = "HENRY COUNTY AND MARTINSVILLE CITY",
+        "MARTINSVILLE CITY" = "(REMOVE) MARTINSVILLE CITY",
+        "MONTGOMERY COUNTY" = "MONTGOMERY COUNTY AND RADFORD CITY",
+        "RADFORD CITY" = "(REMOVE) RADFORD CITY",
+        "PITTSYLVANIA COUNTY" = "PITTSYLVANIA COUNTY AND DANVILLE CITY",
+        "DANVILLE CITY" = "(REMOVE) DANVILLE CITY",
+        "PRINCE GEORGE COUNTY" = "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
+        "HOPEWELL CITY" = "(REMOVE) HOPEWELL CITY",
+        "PETERSBURG CITY" = "(REMOVE) PETERSBURG CITY",
+        "PRINCE WILLIAM COUNTY" = "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
+        "MANASSAS CITY" = "(REMOVE) MANASSAS CITY",
+        "MANASSAS PARK CITY" = "(REMOVE) MANASSAS PARK CITY",
+        "ROANOKE COUNTY" = "ROANOKE COUNTY, ROANOKE CITY, AND SALEM CITY",
+        "ROANOKE CITY" = "(REMOVE) ROANOKE CITY",
+        "SALEM CITY" = "(REMOVE) SALEM CITY",
+        "ROCKINGHAM COUNTY" = "ROCKINGHAM COUNTY AND HARRISONBURG CITY",
+        "HARRISONBURG CITY" = "(REMOVE) HARRISONBURG CITY",
+        "ROCKBRIDGE COUNTY" = "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
+        "BUENA VISTA CITY" = "(REMOVE) BUENA VISTA CITY",
+        "LEXINGTON CITY" = "(REMOVE) LEXINGTON CITY",
+        "SOUTHAMPTON COUNTY" = "SOUTHAMPTON COUNTY AND FRANKLIN CITY",
+        "FRANKLIN CITY" = "(REMOVE) FRANKLIN CITY",
+        "WASHINGTON COUNTY" = "WASHINGTON COUNTY AND BRISTOL CITY",
+        "BRISTOL CITY" = "(REMOVE) BRISTOL CITY",
+        "WISE COUNTY" = "WISE COUNTY AND NORTON CITY",
+        "NORTON CITY" = "(REMOVE) NORTON CITY"
+    )
+
+# remove replicates via regular expression
+merged_nonheroin_opioid_edvisits_df <- merged_nonheroin_opioid_edvisits_df %>%
+    filter(!grepl("\\(REMOVE\\)", Locality)) # localities coded for removal
+
+## NOT DONE FOR HEROIN DATA
+```
+
+There are some datapoints that additionally have issues with data quality for specifically the measure of our interest, opioid overdose ED visit rates per 10K ED visits. There are given below (converted into our combined localities described above):
+
+ - Appomattox
+ - Buchanan
+ - Dickenson
+ - Dinwiddie
+ - Frederick
+ - Gloucester
+ - Greensville
+ - Hampton
+ - Harrisonburg
+ - Henrico
+ - James City
+ - Lancaster
+ - Lexington
+ - Manassas Park
+ - Mathews
+ - Nelson
+ - Northumberland
+ - Orange
+ - Prince Edward
+ - Prince George
+ - Prince William
+ - Richmond City
+ - Rockbridge
+ - Rockingham
+ - Spotsylvania
+ - Sussex
+ - Winchester
+ - York
+
+```{r recode-remove-quality-issues-localities}
+# recode localities with data quality issues for removal
+merged_nonheroin_opioid_edvisits_df[["Locality"]] <-
+    merged_nonheroin_opioid_edvisits_df[["Locality"]] %>%
+    recode(
+        "APPOMATTOX COUNTY" = "(QUALITY) APPOMATTOX COUNTY",
+        "BUCHANAN" = "(QUALITY) BUCHANAN COUNTY",
+        "DICKENSON"= "(QUALITY) DICKENSON COUNTY",
+        "DINWIDDIE COUNTY" = "(QUALITY) DINWIDDIE COUNTY",
+        "FREDERICK COUNTY AND WINCHESTER CITY" = "(QUALITY) FREDERICK COUNTY AND WINCHESTER CITY",
+        "GLOUCESTER COUNTY" = "(QUALITY) GLOUCESTER COUNTY",
+        "GREENSVILLE COUNTY AND EMPORIA CITY" = "(QUALITY) GREENSVILLE COUNTY AND EMPORIA CITY",
+        "HAMPTON CITY" = "(QUALITY) HAMPTON CITY",
+        "HENRICO COUNTY" = "(QUALITY) HENRICO COUNTY",
+        "JAMES CITY COUNTY" = "(QUALITY) JAMES CITY COUNTY",
+        "LANCASTER COUNTY" = "(QUALITY) LANCASTER COUNTY",
+        "MATHEWS COUNTY" = "(QUALITY) MATHEWS COUNTY",
+        "NELSON COUNTY" = "(QUALITY) NELSON CITY",
+        "NORTHUMBERLAND COUNTY" = "(QUALITY) NORTHUMBERLAND COUNTY",
+        "ORANGE COUNTY" = "(QUALITY) ORANGE COUNTY",
+        "PRINCE EDWARD COUNTY" = "(QUALITY) PRINCE EDWARD COUNTY",
+        "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY" = "(QUALITY) PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
+        "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY" = "(QUALITY) PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
+        "RICHMOND CITY" = "(QUALITY) RICHMOND CITY",
+        "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY" = "(QUALITY) ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
+        "ROCKHINGHAM COUNTY AND HARRISONBURG CITY" = "(QUALITY) ROCKINGHAM COUNTY AND HARRISONBURG CITY",
+        "SPOTSYLVANIA COUNTY" = "(QUALITY) SPOTSYLVANIA COUNTY",
+        "SUSSEX COUNTY" = "(QUALITY) SUSSEX COUNTY",
+        "YORK COUNTY" = "(QUALITY) YORK COUNTY"
+    )
+
+# remove localities with data quality issues via regular expression
+merged_nonheroin_opioid_edvisits_df <- merged_nonheroin_opioid_edvisits_df %>%
+    filter(!grepl("\\(QUALITY\\)", Locality)) # localities coded for removal
+
+## NOT DONE FOR HEROIN DATA
+```
+
+This leaves us with a final list of the following `r merged_nonheroin_opioid_edvisits_df[["Locality"]] |> unique() |> length()` city/county localities:
+
+`r merged_nonheroin_opioid_edvisits_df[["Locality"]] |> unique()`.
+
+## Combine Numerical with Geographic Data
+
+**TODO: Create pipeline for visualizing data with combined city/county localities.**
+
+Here they are, mapped: (BROKEN; NEED TO FIX)
+
+```{r map_localities_included}
+```
+
+# Exploratory Data Visualization
+
+We begin by creating 2 facet plots, one with a fixed y-axis for all county/city localities (to show trends across county/city localities on the same scale) and one with a "free" y-axis for all county/city localities (the axis "zooms-in" to the scale of a given county/city locality's data, to see more representatively any ups and downs).
+
+```{r plot_facets_localities_rate-per-10k-ED-visits, eval = F}
+# run this by hand to generate plots as images (more readable)
+merged_nonheroin_opioid_edvisits_df %>% # free_y version
+    ggplot(mapping = aes(x = Year.adj, y = outcome_rate)) + 
+    geom_line() +
+    geom_smooth(method = lm, se = FALSE, fullrange = TRUE) +
+    facet_wrap(~ Locality, scales = 'free_y') + # free_y allows different y-axes
+    theme(strip.text.x = element_text(size = 6))
+    
+
+merged_nonheroin_opioid_edvisits_df %>% # regular, static y-axis version
+    ggplot(mapping = aes(x = Year.adj, y = outcome_rate)) +
+    geom_line() +
+    geom_smooth(method = lm, se = FALSE, fullrange = TRUE) +
+    facet_wrap(~ Locality) +
+    theme(strip.text.x = element_text(size = 6))
+
+# TODO:
+# - save files to output folder
+# - implement higher-resolution (potentially SVG?) images
+# - add images to document via markdown or HTML commands
+```
+
+```{r plot_all_localities_overdose-ED-visit-rate-per-10k-ED-visits}
+merged_nonheroin_opioid_edvisits_df %>%
+    ggplot(mapping = aes(x = Year.adj, y = outcome_rate, group = Locality)) +
+    geom_line(alpha = 0.1) +
+    theme_classic()
+```
+
+# Multilevel Modeling
+
+We utilize the following equation for our fully-specified model:
+
+$$y_{i,t} = (\beta_0 + \gamma_{0,i}) + (\beta_{Yr} + \gamma_{Yr,i}) \cdot Year + \beta_{HB} \cdot HealthBehaviors + \beta_{SEF} \cdot SocialEconomicFactors + \beta_{PE} \cdot PhysicalEnvironment$$
+
+Some of our lesser-specified models will omit main/random effects of time (slopes) and also main effects of time-varying covariates.
+
+## "Unconditional Growth" Model
+
+Our first model, referred to as an "Unconditional Growth" model, consists of main and random effects for intercept, but nothing else.
+
+```{r unconditional_growth_model}
+# model 1 with rates
+model_1_rates <- merged_nonheroin_opioid_edvisits_df %>%
+    lme( # nlme implementation
+        fixed = outcome_rate ~
+            1,
+        random = ~ 1 | Locality
+    )
+
+summary(model_1_rates)
+```
+
+## "Fixed Growth" Model
+
+Our second model, referred to as a "Fixed Growth" model, consists of main and random effects for intercept but only a main effect of time.
+
+```{r fixed_growth_model}
+# model 2 with rates
+model_2_rates <- merged_nonheroin_opioid_edvisits_df %>%
+    lme(
+        fixed = outcome_rate ~
+            Year.adj,
+        random = ~ 1 | Locality
+    )
+
+summary(model_2_rates)
+```
+
+## "Random Growth" Model
+
+Our third model, referred to as a "Random Growth" model, consists of main and random effects for both intercept and time.
+
+```{r random_growth_model}
+# model 3 with rates
+model_3_rates <- merged_nonheroin_opioid_edvisits_df %>%
+    lme(
+        fixed = outcome_rate ~
+            Year.adj,
+        random = ~ Year.adj | Locality
+    )
+
+summary(model_3_rates)
+```
+
+## "Random Growth with Time-Varying Covariates" Model
+
+Our final model, referred to as a "Random Growth" model with time-varying covariates (TVCs), consists of main and random effects for both intercept and time as well as main effects for each of our 4 TVCs, taken from CHR data: Health Behaviors, Clinical Care, Social & Economic Factors, and Physical Environment.
+
+```{r random_growth_with_TVCs_model}
+# model 4 with rates
+model_4_rates <- merged_nonheroin_opioid_edvisits_df %>%
+    na.omit() %>% # 1 set of z-scores is NA
+    lme(
+        fixed = outcome_rate ~
+            Year.adj +
+            zHB + zCC + zSEF + zPE,
+        random = ~ Year.adj | Locality
+    )
+
+summary(model_4_rates)
+```
