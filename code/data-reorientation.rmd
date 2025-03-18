@@ -26,6 +26,7 @@ Exploratory data analysis for opioid overdose ED visit rates per 10k ED visits i
 library(tidyverse)
 library(readxl)
 library(lubridate)
+library(kableExtra)
 library(sf)
 library(broom)
 library(tsibble)
@@ -57,6 +58,25 @@ new_vdh_ed_visits_fname <- # latest data downloaded, from 2018 thru 2024
 Opioid overdose ED visit rates per 10k ED visit rates for Virginia city/county localities from 2018 to 2025 were obtained from the public-facing VDH Syndromic Surveillance webpage for [Drug Overdose ED visits](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-surveillance/). Previously, data were obtained via either the same public-facing webpage or data request from VDH Division of Surveillance and Investigation, Office of Epidemiology, from 2015 to 2023. These data have been combined in visualization at the moment, with future plans to submit another formal data request for all available data (2015 through 2024), after proof-of-concept for this project has been established.
 
 ## Create function for file reading-in
+```{r def-data-reading-func, eval=F}
+read_monthly_vdh_data <- function(data_dir, fname){
+    # use paths to access file
+
+    # pull heroin & nonheroin-opioid sheet references
+
+    # loop through both heroin & nonheroin-opioid sheets
+    
+    # pull sheet data: monthly overdose ED visit rates per 10K ED visits
+    heroin_dataframe <- #
+    
+    # pull nonheroin-opioids data
+    nonheroin_opioid_dataframe <- #
+
+    opioids_long_dataframe <- #
+    return(opioids_long_dataframe) # return long-form dataframe w/ data from
+                                   # both heroin & non-heroin opioids
+}
+```
 
 ## Apply function to data file(s)
 ```{r read_vdh_ed_visits_data, message=F, warning=F}
@@ -193,105 +213,115 @@ The list of replicated localities is below:
  - Washington County and Bristol City
  - Wise County and Norton City
 
-```{r recode-remove-replicate-localities, eval=F}
+```{r recode-remove-replicate-localities}
 # recode replicates for removal
-    recode(
-        "ALLEGHANY COUNTY" = "ALLEGHANY COUNTY AND COVINGTON CITY",
-        "COVINGTON CITY" = "(REMOVE) COVINGTON CITY",
-        "ALBEMARLE COUNTY" = "ALBEMARLE COUNTY AND CHARLOTTESVILLE CITY",
-        "CHARLOTTESVILLE CITY" = "(REMOVE) CHARLOTTESVILLE CITY",
-        "AUGUSTA COUNTY" = "AUGUSTA COUNTY, STAUNTON CITY, AND WAYNESBORO CITY",
-        "STAUNTON CITY" = "(REMOVE) STAUNTON CITY",
-        "WAYNESBORO CITY" = "(REMOVE) WAYNESBORO CITY",
-        "CHESTERFIELD COUNTY" = "CHESTERFIELD COUNTY AND COLONIAL HEIGHTS CITY",
-        "COLONIAL HEIGHTS CITY" = "(REMOVE) COLONIAL HEIGHTS CITY",
-        "FREDERICK COUNTY" = "FREDERICK COUNTY AND WINCHESTER CITY",
-        "WINCHESTER CITY" = "(REMOVE) WINCHESTER CITY",
-        "FAIRFAX COUNTY" = "FAIRFAX COUNTY, FAIRFAX CITY, AND FALLS CHURCH CITY",
-        "FAIRFAX CITY" = "(REMOVE) FAIRFAX CITY",
-        "FALLS CHURCH CITY" = "(REMOVE) FALLS CHURCH CITY",
-        "GRAYSON COUNTY" = "GRAYSON COUNTY AND GALAX CITY",
-        "GALAX CITY" = "(REMOVE) GALAX CITY",
-        "GREENSVILLE COUNTY" = "GREENSVILLE COUNTY AND EMPORIA CITY",
-        "EMPORIA CITY" = "(REMOVE) EMPORIA CITY",
-        "HENRY COUNTY" = "HENRY COUNTY AND MARTINSVILLE CITY",
-        "MARTINSVILLE CITY" = "(REMOVE) MARTINSVILLE CITY",
-        "MONTGOMERY COUNTY" = "MONTGOMERY COUNTY AND RADFORD CITY",
-        "RADFORD CITY" = "(REMOVE) RADFORD CITY",
-        "PITTSYLVANIA COUNTY" = "PITTSYLVANIA COUNTY AND DANVILLE CITY",
-        "DANVILLE CITY" = "(REMOVE) DANVILLE CITY",
-        "PRINCE GEORGE COUNTY" = "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
-        "HOPEWELL CITY" = "(REMOVE) HOPEWELL CITY",
-        "PETERSBURG CITY" = "(REMOVE) PETERSBURG CITY",
-        "PRINCE WILLIAM COUNTY" = "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
-        "MANASSAS CITY" = "(REMOVE) MANASSAS CITY",
-        "MANASSAS PARK CITY" = "(REMOVE) MANASSAS PARK CITY",
-        "ROANOKE COUNTY" = "ROANOKE COUNTY, ROANOKE CITY, AND SALEM CITY",
-        "ROANOKE CITY" = "(REMOVE) ROANOKE CITY",
-        "SALEM CITY" = "(REMOVE) SALEM CITY",
-        "ROCKINGHAM COUNTY" = "ROCKINGHAM COUNTY AND HARRISONBURG CITY",
-        "HARRISONBURG CITY" = "(REMOVE) HARRISONBURG CITY",
-        "ROCKBRIDGE COUNTY" = "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
-        "BUENA VISTA CITY" = "(REMOVE) BUENA VISTA CITY",
-        "LEXINGTON CITY" = "(REMOVE) LEXINGTON CITY",
-        "SOUTHAMPTON COUNTY" = "SOUTHAMPTON COUNTY AND FRANKLIN CITY",
-        "FRANKLIN CITY" = "(REMOVE) FRANKLIN CITY",
-        "WASHINGTON COUNTY" = "WASHINGTON COUNTY AND BRISTOL CITY",
-        "BRISTOL CITY" = "(REMOVE) BRISTOL CITY",
-        "WISE COUNTY" = "WISE COUNTY AND NORTON CITY",
-        "NORTON CITY" = "(REMOVE) NORTON CITY"
+monthly_rates_combined_long <- monthly_rates_combined_long %>%
+    mutate(Locality = case_match(
+        Locality,
+        "ALLEGHANY COUNTY" ~ "ALLEGHANY COUNTY AND COVINGTON CITY",
+        "COVINGTON CITY" ~ "(REMOVE) COVINGTON CITY",
+        "ALBEMARLE COUNTY" ~ "ALBEMARLE COUNTY AND CHARLOTTESVILLE CITY",
+        "CHARLOTTESVILLE CITY" ~ "(REMOVE) CHARLOTTESVILLE CITY",
+        "AUGUSTA COUNTY" ~ "AUGUSTA COUNTY, STAUNTON CITY, AND WAYNESBORO CITY",
+        "STAUNTON CITY" ~ "(REMOVE) STAUNTON CITY",
+        "WAYNESBORO CITY" ~ "(REMOVE) WAYNESBORO CITY",
+        "CHESTERFIELD COUNTY" ~ "CHESTERFIELD COUNTY AND COLONIAL HEIGHTS CITY",
+        "COLONIAL HEIGHTS CITY" ~ "(REMOVE) COLONIAL HEIGHTS CITY",
+        "FREDERICK COUNTY" ~ "FREDERICK COUNTY AND WINCHESTER CITY",
+        "WINCHESTER CITY" ~ "(REMOVE) WINCHESTER CITY",
+        "FAIRFAX COUNTY" ~ "FAIRFAX COUNTY, FAIRFAX CITY, AND FALLS CHURCH CITY",
+        "FAIRFAX CITY" ~ "(REMOVE) FAIRFAX CITY",
+        "FALLS CHURCH CITY" ~ "(REMOVE) FALLS CHURCH CITY",
+        "GRAYSON COUNTY" ~ "GRAYSON COUNTY AND GALAX CITY",
+        "GALAX CITY" ~ "(REMOVE) GALAX CITY",
+        "GREENSVILLE COUNTY" ~ "GREENSVILLE COUNTY AND EMPORIA CITY",
+        "EMPORIA CITY" ~ "(REMOVE) EMPORIA CITY",
+        "HENRY COUNTY" ~ "HENRY COUNTY AND MARTINSVILLE CITY",
+        "MARTINSVILLE CITY" ~ "(REMOVE) MARTINSVILLE CITY",
+        "MONTGOMERY COUNTY" ~ "MONTGOMERY COUNTY AND RADFORD CITY",
+        "RADFORD CITY" ~ "(REMOVE) RADFORD CITY",
+        "PITTSYLVANIA COUNTY" ~ "PITTSYLVANIA COUNTY AND DANVILLE CITY",
+        "DANVILLE CITY" ~ "(REMOVE) DANVILLE CITY",
+        "PRINCE GEORGE COUNTY" ~ "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
+        "HOPEWELL CITY" ~ "(REMOVE) HOPEWELL CITY",
+        "PETERSBURG CITY" ~ "(REMOVE) PETERSBURG CITY",
+        "PRINCE WILLIAM COUNTY" ~ "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
+        "MANASSAS CITY" ~ "(REMOVE) MANASSAS CITY",
+        "MANASSAS PARK CITY" ~ "(REMOVE) MANASSAS PARK CITY",
+        "ROANOKE COUNTY" ~ "ROANOKE COUNTY, ROANOKE CITY, AND SALEM CITY",
+        "ROANOKE CITY" ~ "(REMOVE) ROANOKE CITY",
+        "SALEM CITY" ~ "(REMOVE) SALEM CITY",
+        "ROCKINGHAM COUNTY" ~ "ROCKINGHAM COUNTY AND HARRISONBURG CITY",
+        "HARRISONBURG CITY" ~ "(REMOVE) HARRISONBURG CITY",
+        "ROCKBRIDGE COUNTY" ~ "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
+        "BUENA VISTA CITY" ~ "(REMOVE) BUENA VISTA CITY",
+        "LEXINGTON CITY" ~ "(REMOVE) LEXINGTON CITY",
+        "SOUTHAMPTON COUNTY" ~ "SOUTHAMPTON COUNTY AND FRANKLIN CITY",
+        "FRANKLIN CITY" ~ "(REMOVE) FRANKLIN CITY",
+        "WASHINGTON COUNTY" ~ "WASHINGTON COUNTY AND BRISTOL CITY",
+        "BRISTOL CITY" ~ "(REMOVE) BRISTOL CITY",
+        "WISE COUNTY" ~ "WISE COUNTY AND NORTON CITY",
+        "NORTON CITY" ~ "(REMOVE) NORTON CITY",
+        .default = Locality # return original if no match
     )
-
-# filter on localities to-be-removed via regular expression
-filter(!grepl("\\(REMOVE\\)", Locality)) # localities coded for removal
+) %>%
+    # filter on localities to-be-removed via regular expression
+    filter(!grepl("\\(REMOVE\\)", Locality))
 ```
 
-### Data exclusion: Localities unable to self-compare before 2021
+### Data exclusion: Localities w/ data quality issues prior to 2021
 
  In addition, “VDH updated the method used to assign Virginia localities based on zip code in July 2021. As a result, the Rates per 10,000 ED Visits for 2021 may have changed compared to previously published data for the following localities: Appomattox, Buchanan, Dickenson, Dinwiddie, Frederick, Gloucester, Greensville, Hampton, Harrisonburg, Henrico, James City, Lancaster, Lexington, Manassas Park, Mathews, Nelson, Northumberland, Orange, Prince Edward, Prince George, Prince William, Richmond City, Rockbridge, Rockingham, Spotsylvania, Sussex, Winchester, York.” **As such, those city/county localities were also excluded from our analyses for data quality concerns.**
 
-```{r recode-remove-quality-issues-localities, eval=F}
+```{r recode-remove-quality-issues-localities}
 # recode localities with data quality issues for removal
-merged_nonheroin_opioid_edvisits_df[["Locality"]] <-
-    merged_nonheroin_opioid_edvisits_df[["Locality"]] %>%
-    recode(
-        "APPOMATTOX COUNTY" = "(QUALITY) APPOMATTOX COUNTY",
-        "BUCHANAN" = "(QUALITY) BUCHANAN COUNTY",
-        "DICKENSON"= "(QUALITY) DICKENSON COUNTY",
-        "DINWIDDIE COUNTY" = "(QUALITY) DINWIDDIE COUNTY",
-        "FREDERICK COUNTY AND WINCHESTER CITY" = "(QUALITY) FREDERICK COUNTY AND WINCHESTER CITY",
-        "GLOUCESTER COUNTY" = "(QUALITY) GLOUCESTER COUNTY",
-        "GREENSVILLE COUNTY AND EMPORIA CITY" = "(QUALITY) GREENSVILLE COUNTY AND EMPORIA CITY",
-        "HAMPTON CITY" = "(QUALITY) HAMPTON CITY",
-        "HENRICO COUNTY" = "(QUALITY) HENRICO COUNTY",
-        "JAMES CITY COUNTY" = "(QUALITY) JAMES CITY COUNTY",
-        "LANCASTER COUNTY" = "(QUALITY) LANCASTER COUNTY",
-        "MATHEWS COUNTY" = "(QUALITY) MATHEWS COUNTY",
-        "NELSON COUNTY" = "(QUALITY) NELSON CITY",
-        "NORTHUMBERLAND COUNTY" = "(QUALITY) NORTHUMBERLAND COUNTY",
-        "ORANGE COUNTY" = "(QUALITY) ORANGE COUNTY",
-        "PRINCE EDWARD COUNTY" = "(QUALITY) PRINCE EDWARD COUNTY",
-        "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY" = "(QUALITY) PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
-        "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY" = "(QUALITY) PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
-        "RICHMOND CITY" = "(QUALITY) RICHMOND CITY",
-        "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY" = "(QUALITY) ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
-        "ROCKHINGHAM COUNTY AND HARRISONBURG CITY" = "(QUALITY) ROCKINGHAM COUNTY AND HARRISONBURG CITY",
-        "SPOTSYLVANIA COUNTY" = "(QUALITY) SPOTSYLVANIA COUNTY",
-        "SUSSEX COUNTY" = "(QUALITY) SUSSEX COUNTY",
-        "YORK COUNTY" = "(QUALITY) YORK COUNTY"
+monthly_rates_combined_long <- monthly_rates_combined_long %>%
+    mutate(Locality = case_match(
+        Locality,
+        "APPOMATTOX COUNTY" ~ "(QUALITY) APPOMATTOX COUNTY",
+        "BUCHANAN" ~ "(QUALITY) BUCHANAN COUNTY",
+        "DICKENSON"~ "(QUALITY) DICKENSON COUNTY",
+        "DINWIDDIE COUNTY" ~ "(QUALITY) DINWIDDIE COUNTY",
+        "FREDERICK COUNTY AND WINCHESTER CITY" ~ "(QUALITY) FREDERICK COUNTY AND WINCHESTER CITY",
+        "GLOUCESTER COUNTY" ~ "(QUALITY) GLOUCESTER COUNTY",
+        "GREENSVILLE COUNTY AND EMPORIA CITY" ~ "(QUALITY) GREENSVILLE COUNTY AND EMPORIA CITY",
+        "HAMPTON CITY" ~ "(QUALITY) HAMPTON CITY",
+        "HENRICO COUNTY" ~ "(QUALITY) HENRICO COUNTY",
+        "JAMES CITY COUNTY" ~ "(QUALITY) JAMES CITY COUNTY",
+        "LANCASTER COUNTY" ~ "(QUALITY) LANCASTER COUNTY",
+        "MATHEWS COUNTY" ~ "(QUALITY) MATHEWS COUNTY",
+        "NELSON COUNTY" ~ "(QUALITY) NELSON CITY",
+        "NORTHUMBERLAND COUNTY" ~ "(QUALITY) NORTHUMBERLAND COUNTY",
+        "ORANGE COUNTY" ~ "(QUALITY) ORANGE COUNTY",
+        "PRINCE EDWARD COUNTY" ~ "(QUALITY) PRINCE EDWARD COUNTY",
+        "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY" ~ "(QUALITY) PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
+        "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY" ~ "(QUALITY) PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
+        "RICHMOND CITY" ~ "(QUALITY) RICHMOND CITY",
+        "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY" ~ "(QUALITY) ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
+        "ROCKHINGHAM COUNTY AND HARRISONBURG CITY" ~ "(QUALITY) ROCKINGHAM COUNTY AND HARRISONBURG CITY",
+        "SPOTSYLVANIA COUNTY" ~ "(QUALITY) SPOTSYLVANIA COUNTY",
+        "SUSSEX COUNTY" ~ "(QUALITY) SUSSEX COUNTY",
+        "YORK COUNTY" ~ "(QUALITY) YORK COUNTY",
+        .default = Locality # return original if no match
     )
-
-# filter on localities w/ data quality issues via regular expression
-filter(!grepl("\\(QUALITY\\)", Locality)) # localities coded for removal
+) %>%
+    # filter on localities w/ data quality issues via regular expression
+    filter(!grepl("\\(QUALITY\\)", Locality))
 ```
 
 ## Final dataset
+
+After removing city/county localities which were replicates in [Data exclusion/aggregation: (Replicates of) combined localities] and removing those with data quality/continuity issues prior to 2021 in [Data exclusion: Localities w/ data quality issues prior to 2021], we are now left with the following list of localities:
+
+```{r final-locality-list}
+monthly_rates_combined_long %>% select(Locality) %>% unique() %>% as.vector()
+```
 
 # Exploratory data analysis
 
 ## Data Missingness (and Zero Values)
 
-```{r summarize-missingness, results="asis"}
+```{r summarize-missingness, results = "asis"}
 monthly_rates_combined_long %>%
     group_by(`Locality`, `FIPS`, `measure_name`) %>%
     summarize(
@@ -299,7 +329,8 @@ monthly_rates_combined_long %>%
         nonzero_nonNA_value_count = sum(! is.na(measure_value) & (measure_value != 0))
     ) %>%
     arrange(desc(nonzero_nonNA_value_count)) %>%
-    knitr::kable("html") %>% print(n = 402)
+    kbl("html") %>%
+    kable_classic(full_width = F)
 ```
 
 ## Exploratory Data Visualization
@@ -325,13 +356,13 @@ locality_rates_plotter <- function(locality, measure) {
 # plot Virginia state overall
 locality_rates_plotter("VIRGINIA", "combined_rate")
 
-# plot each county (separately) [COMMENTED-OUT FOR NOW]
-# monthly_rates_combined_long[["Locality"]] %>% unique() %>%
-#     map(~ locality_rates_plotter(.x, "combined_rate"))
+# plot each county (separately)
+monthly_rates_combined_long[["Locality"]] %>% unique() %>%
+    map(~ locality_rates_plotter(.x, "combined_rate"))
 ```
 
 # Project To-Do List
- - filter properly to unique geographies (remove replicates)
+ - implement custom addition rules for NAs for combined opioid data (currently any constituent NA means combined is NA)
  - read-in annual data as well
  - properly "functionize" data reading-in code
  - change trajectory plots' x-axes to include quarters and minor gridlines for each quarter/month? (and/or add points?)
@@ -340,3 +371,4 @@ locality_rates_plotter("VIRGINIA", "combined_rate")
  - send in a request to VDH for the data from 2015 onwards, and ask if they can simply format the data as requested as well
  - explore MS Word report generation 
  - ~~render kables properly for HTML~~
+ - ~~filter properly to unique geographies (remove replicates)~~
