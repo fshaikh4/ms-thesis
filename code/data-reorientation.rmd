@@ -31,7 +31,7 @@ library(sf)
 library(broom)
 library(tsibble)
 library(fable) # also loads fabletools
-# library(feasts)
+library(feasts) # seasonal plots
 # library(casnet) # installed via remotes::install_github('FredHasselman/casnet'); fails so far, need to try w/ fresh R = 4.20 install
 ```
 
@@ -352,29 +352,91 @@ locality_rates_plotter <- function(locality, measure) {
     # time conversion (?)
     monthly_rates_combined_long %>%
     filter(Locality == locality, measure_name == measure) %>%
-    ggplot(aes(x = date, y = measure_value, group = Locality)) +
+    ggplot(aes(x = as_date(date), y = measure_value, group = Locality)) +
         geom_line() +
         geom_point() +
         theme_classic() +
         theme(legend.position = "none") +
         ggtitle(paste0(locality)) +
-        ylab(measure)
+        ylab(measure) +
+        geom_hline(yintercept = 8, color = "red") +
+        scale_x_yearquarter(date_breaks = "1 year", date_minor_breaks = "13 weeks") +
+        theme(
+            panel.grid.major.x = element_line(
+                color = "black",
+                size = 0.2,
+                linetype = "dashed"
+            )
+        )
 }
+```
 
+```{r plotter-for-all-locality-plots, message=F, warning=F}
 # plot each county (separately) and Virginia state overall
 monthly_rates_combined_long[["Locality"]] %>%
     unique() %>%
     map(~ locality_rates_plotter(.x, "combined_rate"))
 ```
 
+### Monthly rate polar seasonal plots
+
+```{r seasonal-plots, message=F, warning=F}
+# generic polar seasonal plots plotting function for county opioid overdose 
+# ED visit rates
+locality_rates_polar_seasonal_plotter <- function(locality, measure) {
+    monthly_rates_combined_long %>%
+    filter(Locality == locality, measure_name == measure) %>%
+    mutate(date = yearmonth(date)) %>%
+    as_tsibble() %>% # needed for gg_season function
+    gg_season(measure_value, polar = TRUE) + # polar seasonal plot
+    ggtitle(paste0(locality)) +
+    ylab(measure) +
+    theme_classic() + 
+    theme(
+        panel.background = element_rect(fill = NA),
+        panel.grid.major = element_line(
+            colour = "black", 
+            size = 0.2,
+            linetype = "dotted"
+        ),
+        panel.ontop = TRUE
+    )
+}
+
+# monthly_rates_combined_long %>% 
+#     filter(
+#         Locality == "FAIRFAX COUNTY, FAIRFAX CITY, AND FALLS CHURCH CITY",
+#         measure_name == "combined_rate"
+#     ) %>%
+#     mutate(date = yearmonth(date)) %>%
+#     as_tsibble() %>%
+#     gg_season(measure_value, polar = TRUE) +
+#     theme_classic() + 
+#     theme(
+#         panel.background = element_rect(fill = NA),
+#         panel.grid.major = element_line(colour = "black", linetype = "dotted"),
+#         panel.ontop = TRUE
+#     )
+```
+
+```{r polar-seasonal-plots, message=F, warning=F}
+monthly_rates_combined_long[["Locality"]] %>%
+    unique() %>%
+    map(~ locality_rates_polar_seasonal_plotter(.x, "combined_rate"))
+```
+
+### Monthly rate subseries plots
+
 # Project To-Do List
  - read-in annual data as well
  - properly "functionize" data reading-in code
- - change trajectory plots' x-axes to include quarters and minor gridlines for each quarter/month? (and/or add points?)
  - generate polar seasonal plots (for monthly rates)
  - pull-in prior data file from 2015 as well, and compare overlapping data
  - send in a request to VDH for the data from 2015 onwards, and ask if they can simply format the data as requested as well
  - explore MS Word report generation 
  - ~~render kables properly for HTML~~
  - ~~filter properly to unique geographies (remove replicates)~~
- - ~~implement custom addition rules for NAs for combined opioid data (currently any constituent NA means combined is NA); SOLUTION: treat NA as 0 for the sum (since NA is due to low-number supression)~~
+ - ~~implement custom addition rules for NAs for combined opioid data (currently any constituent NA means combined is NA)~~
+  - ~~SOLUTION: treat NA as 0 for the sum (since NA is due to low-number supression)~~
+ - ~~change trajectory plots' x-axes to include quarters and minor gridlines for each quarter/month? (and/or add points?)~~
+  - ~~SOLUTION: instead made major gridlines for years, and formatted x-axis in Q format (still only showing years, so Q1)) ~~
