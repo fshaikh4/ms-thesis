@@ -166,7 +166,10 @@ monthly_rates_combined_long <- full_join(
     long_monthly_rates_nonheroin_opioid, 
     long_monthly_rates_heroin
 ) %>% 
-mutate(combined_rate = nonheroin_rate + heroin_rate) %>%
+mutate(combined_rate = 
+    replace_na(nonheroin_rate, 4) + # treat NAs as maximum suppressed value (4) for this sum
+    replace_na(heroin_rate, 4) # treat NAs as maximum suppressed value (4) for this sum
+) %>%
 pivot_longer(
     cols = ! c(`Locality`, `FIPS`, `Month & Year`),
     names_to = "measure_name",
@@ -314,14 +317,18 @@ monthly_rates_combined_long <- monthly_rates_combined_long %>%
 After removing city/county localities which were replicates in [Data exclusion/aggregation: (Replicates of) combined localities] and removing those with data quality/continuity issues prior to 2021 in [Data exclusion: Localities w/ data quality issues prior to 2021], we are now left with the following list of localities:
 
 ```{r final-locality-list}
-monthly_rates_combined_long %>% select(Locality) %>% unique() %>% as.vector()
+monthly_rates_combined_long %>%
+    select(Locality) %>%
+    filter(Locality != "VIRGINIA") %>% # remove state-level data from list
+    unique() %>%
+    as.vector()
 ```
 
 # Exploratory data analysis
 
 ## Data Missingness (and Zero Values)
 
-```{r summarize-missingness, results = "asis"}
+```{r summarize-missingness, results = "asis", eval=F}
 monthly_rates_combined_long %>%
     group_by(`Locality`, `FIPS`, `measure_name`) %>%
     summarize(
@@ -353,16 +360,14 @@ locality_rates_plotter <- function(locality, measure) {
         ggtitle(paste0(locality)) +
         ylab(measure)
 }
-# plot Virginia state overall
-locality_rates_plotter("VIRGINIA", "combined_rate")
 
-# plot each county (separately)
-monthly_rates_combined_long[["Locality"]] %>% unique() %>%
+# plot each county (separately) and Virginia state overall
+monthly_rates_combined_long[["Locality"]] %>%
+    unique() %>%
     map(~ locality_rates_plotter(.x, "combined_rate"))
 ```
 
 # Project To-Do List
- - implement custom addition rules for NAs for combined opioid data (currently any constituent NA means combined is NA)
  - read-in annual data as well
  - properly "functionize" data reading-in code
  - change trajectory plots' x-axes to include quarters and minor gridlines for each quarter/month? (and/or add points?)
@@ -372,3 +377,4 @@ monthly_rates_combined_long[["Locality"]] %>% unique() %>%
  - explore MS Word report generation 
  - ~~render kables properly for HTML~~
  - ~~filter properly to unique geographies (remove replicates)~~
+ - ~~implement custom addition rules for NAs for combined opioid data (currently any constituent NA means combined is NA); SOLUTION: treat NA as 0 for the sum (since NA is due to low-number supression)~~
