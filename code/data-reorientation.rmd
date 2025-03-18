@@ -381,7 +381,7 @@ monthly_rates_combined_long[["Locality"]] %>%
 ### Monthly rate polar seasonal plots
 
 ```{r seasonal-plots, message=F, warning=F}
-# generic polar seasonal plots plotting function for county opioid overdose 
+# generic polar seasonal plots plotting function for county opioid overdose
 # ED visit rates
 locality_rates_polar_seasonal_plotter <- function(locality, measure) {
     monthly_rates_combined_long %>%
@@ -402,21 +402,6 @@ locality_rates_polar_seasonal_plotter <- function(locality, measure) {
         panel.ontop = TRUE
     )
 }
-
-# monthly_rates_combined_long %>% 
-#     filter(
-#         Locality == "FAIRFAX COUNTY, FAIRFAX CITY, AND FALLS CHURCH CITY",
-#         measure_name == "combined_rate"
-#     ) %>%
-#     mutate(date = yearmonth(date)) %>%
-#     as_tsibble() %>%
-#     gg_season(measure_value, polar = TRUE) +
-#     theme_classic() + 
-#     theme(
-#         panel.background = element_rect(fill = NA),
-#         panel.grid.major = element_line(colour = "black", linetype = "dotted"),
-#         panel.ontop = TRUE
-#     )
 ```
 
 ```{r polar-seasonal-plots, message=F, warning=F}
@@ -427,16 +412,38 @@ monthly_rates_combined_long[["Locality"]] %>%
 
 ### Monthly rate subseries plots
 
+```{r subseries-plotter, message=F, warning=F}
+# generic monthly subseries plots plotting function for county opioid overdose
+# ED visit rates
+locality_rates_monthly_subseries_plotter <- function(locality, measure) {
+    monthly_rates_combined_long %>%
+    filter(Locality == locality, measure_name == measure) %>%
+    mutate(date = yearmonth(date)) %>%
+    as_tsibble() %>% # needed for gg_season function
+    gg_subseries(measure_value) + # monthly subseries plot
+    ggtitle(paste0(locality)) +
+    ylab(measure) +
+    theme_bw()
+}
+```
+
+```{r monthly-subseries-plots, message=F, warning=F}
+monthly_rates_combined_long[["Locality"]] %>%
+    unique() %>%
+    map(~ locality_rates_monthly_subseries_plotter(.x, "combined_rate"))
+```
+
 # Project To-Do List
  - read-in annual data as well
  - properly "functionize" data reading-in code
- - generate polar seasonal plots (for monthly rates)
  - pull-in prior data file from 2015 as well, and compare overlapping data
  - send in a request to VDH for the data from 2015 onwards, and ask if they can simply format the data as requested as well
  - explore MS Word report generation 
  - ~~render kables properly for HTML~~
  - ~~filter properly to unique geographies (remove replicates)~~
  - ~~implement custom addition rules for NAs for combined opioid data (currently any constituent NA means combined is NA)~~
-  - ~~SOLUTION: treat NA as 0 for the sum (since NA is due to low-number supression)~~
+    - ~~SOLUTION: treat NA as 0 for the sum (since NA is due to low-number supression)~~
  - ~~change trajectory plots' x-axes to include quarters and minor gridlines for each quarter/month? (and/or add points?)~~
-  - ~~SOLUTION: instead made major gridlines for years, and formatted x-axis in Q format (still only showing years, so Q1)) ~~
+    - ~~SOLUTION: instead made major gridlines for years, and formatted x-axis in Q format (still only showing years, so Q1)~~
+ - ~~generate polar seasonal plots (for monthly rates)~~
+ - ~~generate monthly subseries plots (for each month, yearly data)~~
