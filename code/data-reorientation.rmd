@@ -1,0 +1,342 @@
+---
+title: Data Re-Orientation
+subtitle: Opioid overdose emergency department (ED) visit rates per 10k ED visits in Virginia city/county localities from 2015/2018 thru 2024
+author: Faysal Shaikh
+date: Last updated `r format(Sys.Date(), "%B %d, %Y")`
+output: 
+    bookdown::html_document2:
+        toc: true
+        toc_depth: 4
+        toc_float:
+            collapsed: false
+        number_sections: false
+---
+
+Exploratory data analysis for opioid overdose ED visit rates per 10k ED visits in Virginia city/county localities.
+
+```{r global-setup, include=FALSE}
+# hidden chunk; nothing decided yet, but default below
+# knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preliminaries
+
+## Packages
+```{r load_relevant_packages, warning=F, message=F}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(sf)
+library(broom)
+library(tsibble)
+library(fable) # also loads fabletools
+# library(feasts)
+# library(casnet) # installed via remotes::install_github('FredHasselman/casnet'); fails so far, need to try w/ fresh R = 4.20 install
+```
+
+## Specify relevant paths
+
+```{r specify_data_paths}
+# path specification: data directory
+data_dir_path <- # uncomment appropriate option below
+    "d:/Codebase/ms-thesis/data/"
+
+# filename specification: overdose ED visits
+old_vdh_ed_visits_fname <- # prior data downloaded, from 2015 thru 2023
+    "Opioid-and-Heroin-ED-Visit-rate_VA_2015-2023.xlsx"
+
+new_vdh_ed_visits_fname <- # latest data downloaded, from 2018 thru 2024
+    "Drug-Overdose-ED-Visits_Virginia-Jan-2025.xlsx"
+
+```
+
+# Data and Preprocessing
+
+## Data source
+
+Opioid overdose ED visit rates per 10k ED visit rates for Virginia city/county localities from 2018 to 2025 were obtained from the public-facing VDH Syndromic Surveillance webpage for [Drug Overdose ED visits](https://www.vdh.virginia.gov/surveillance-and-investigation/syndromic-surveillance/drug-overdose-surveillance/). Previously, data were obtained via either the same public-facing webpage or data request from VDH Division of Surveillance and Investigation, Office of Epidemiology, from 2015 to 2023. These data have been combined in visualization at the moment, with future plans to submit another formal data request for all available data (2015 through 2024), after proof-of-concept for this project has been established.
+
+## Create function for file reading-in
+
+## Apply function to data file(s)
+```{r read_vdh_ed_visits_data, message=F, warning=F}
+# preparation for reading-in data: VDH opioid overdose ED visits
+vdh_ed_visits_fullpath <-
+    paste0(data_dir_path, new_vdh_ed_visits_fname) # precombine fname parts
+vdh_ed_visits_sheetslist <-
+    excel_sheets(vdh_ed_visits_fullpath) # get list of worksheet "tabs" for MS
+                                         # Excel workbook file to mask for
+                                         # specific sheet(s)
+
+# reading-in data: VDH opioid overdose ED visits
+# PART 1: NONHEROIN OPIOID OVERDOSE ED VISITS DATA
+monthly_rates_nonheroin_opioid <- read_excel(
+    path = vdh_ed_visits_fullpath,
+    sheet = vdh_ed_visits_sheetslist[5], # locality opioid sheet
+    skip = 1, # skip first row (use 2nd header row of data)
+    na = "*"
+) %>%
+# select relevant cols (first 2, and all monthly rates; regexp excludes annual)
+select(c("Locality", "FIPS", matches("^Rate per 10k ED Visits"))) %>%
+head(-1) %>% # remove last table row (only contained notes)
+# make all locality names uppercase and remove any special characters
+mutate( 
+    "Locality" = str_to_upper(str_replace_all(
+            `Locality`,
+            "[^a-zA-Z0-9 ]",
+            ""
+    )),
+    .keep = "unused",
+    .before = "FIPS"
+)
+
+#rename relevant cols to reflect month & year of each datapoint
+colnames(monthly_rates_nonheroin_opioid)[-2:0] <-
+    c(outer(month.abb, 2018:2024, FUN = paste), "Jan 2025") # outer product of
+                                                            # months and years,
+                                                            # except for
+                                                            # Jan 2025
+
+# convert to long format
+long_monthly_rates_nonheroin_opioid <- monthly_rates_nonheroin_opioid %>%
+    pivot_longer(
+        cols = ! c(`Locality`, `FIPS`),
+        names_to = "Month & Year",
+        values_to = "nonheroin_rate"
+    )
+
+# PART 2: HEROIN OVERDOSE ED VISITS DATA
+monthly_rates_heroin <- read_excel(
+    path = vdh_ed_visits_fullpath,
+    sheet = vdh_ed_visits_sheetslist[6], # locality heroin sheet
+    skip = 1, # skip first row (use 2nd header row of data)
+    na = "*"
+) %>%
+# select relevant cols (first 2, and all monthly rates; regexp excludes annual)
+select(c("Locality", "FIPS", matches("^Rate per 10k ED Visits"))) %>%
+head(-1) %>% # remove last table row (only contained notes)
+# make all locality names uppercase and remove any special characters
+mutate( 
+    "Locality" = str_to_upper(str_replace_all(
+            `Locality`,
+            "[^a-zA-Z0-9 ]",
+            ""
+    )),
+    .keep = "unused",
+    .before = "FIPS"
+)
+
+#rename relevant cols to reflect month & year of each datapoint
+colnames(monthly_rates_heroin)[-2:0] <-
+    c(outer(month.abb, 2018:2024, FUN = paste), "Jan 2025") # outer product of
+                                                            # months and years,
+                                                            # except for
+                                                            # Jan 2025
+
+# convert to long format
+long_monthly_rates_heroin <- monthly_rates_heroin %>%
+    pivot_longer(
+        cols = ! c(`Locality`, `FIPS`),
+        names_to = "Month & Year",
+        values_to = "heroin_rate"
+    )
+
+# PART 3: COMBINED OPIOID OVERDOSE DATA
+monthly_rates_combined_long <- full_join(
+    long_monthly_rates_nonheroin_opioid, 
+    long_monthly_rates_heroin
+) %>% 
+mutate(combined_rate = nonheroin_rate + heroin_rate) %>%
+pivot_longer(
+    cols = ! c(`Locality`, `FIPS`, `Month & Year`),
+    names_to = "measure_name",
+    values_to = "measure_value"
+) %>%
+mutate(
+    date = parse_date_time(`Month & Year`, "my"), 
+    .before = "measure_name"
+)
+```
+
+## Data inclusion/exclusion criteria
+
+### Unit of analysis: Virginia city/county locality
+
+This project examines data on Virginia cities and counties (more generally, "localities") as the primary units of analysis. As a geographic reference, below is a labeled map of Virginia counties obtained from [the Virginia Association of Counties (VACO) website](https://www.vaco.org/about/regions/):
+
+![](https://www.vaco.org/wp-content/uploads/2023/04/VACoRegionMap23TransparentReduced.png)
+
+
+### Data exclusion/aggregation: (Replicates of) combined localities
+
+Our dataset involve certain localities which are combined and replicated. This seems to be in scenarios where a zip code may be considered to belong to any of multiple localities, so the data deal with this by simply assigning it to the largest locality in the merge (and replicating those combined numbers for the constituent localities). Without removing these replicates, we are potentially oversampling those data points in our model. 
+
+The list of replicated localities is below:
+
+ - Alleghany County and Covington City
+ - Albemarle County and Charlottesville City
+ - Augusta County, Staunton City, and Waynesboro City
+ - Chesterfield County and Colonial Heights City
+ - Frederick County and Winchester City
+ - Fairfax County, Fairfax City, and Falls Church City
+ - Grayson County and Galax City
+ - Greensville County and Emporia City
+ - Henry County and Martinsville City
+ - Montgomery County and Radford City
+ - Pittsylvania County and Danville City
+ - Prince George County, Hopewell City, and Petersburg City
+ - Prince William County, Manassas City, and Manassas Park City
+ - Roanoke County, Roanoke City, and Salem City
+ - Rockingham County and Harrisonburg City
+ - Rockbridge County, Buena Vista City, and Lexington City
+ - Southampton County and Franklin City
+ - Washington County and Bristol City
+ - Wise County and Norton City
+
+```{r recode-remove-replicate-localities, eval=F}
+# recode replicates for removal
+    recode(
+        "ALLEGHANY COUNTY" = "ALLEGHANY COUNTY AND COVINGTON CITY",
+        "COVINGTON CITY" = "(REMOVE) COVINGTON CITY",
+        "ALBEMARLE COUNTY" = "ALBEMARLE COUNTY AND CHARLOTTESVILLE CITY",
+        "CHARLOTTESVILLE CITY" = "(REMOVE) CHARLOTTESVILLE CITY",
+        "AUGUSTA COUNTY" = "AUGUSTA COUNTY, STAUNTON CITY, AND WAYNESBORO CITY",
+        "STAUNTON CITY" = "(REMOVE) STAUNTON CITY",
+        "WAYNESBORO CITY" = "(REMOVE) WAYNESBORO CITY",
+        "CHESTERFIELD COUNTY" = "CHESTERFIELD COUNTY AND COLONIAL HEIGHTS CITY",
+        "COLONIAL HEIGHTS CITY" = "(REMOVE) COLONIAL HEIGHTS CITY",
+        "FREDERICK COUNTY" = "FREDERICK COUNTY AND WINCHESTER CITY",
+        "WINCHESTER CITY" = "(REMOVE) WINCHESTER CITY",
+        "FAIRFAX COUNTY" = "FAIRFAX COUNTY, FAIRFAX CITY, AND FALLS CHURCH CITY",
+        "FAIRFAX CITY" = "(REMOVE) FAIRFAX CITY",
+        "FALLS CHURCH CITY" = "(REMOVE) FALLS CHURCH CITY",
+        "GRAYSON COUNTY" = "GRAYSON COUNTY AND GALAX CITY",
+        "GALAX CITY" = "(REMOVE) GALAX CITY",
+        "GREENSVILLE COUNTY" = "GREENSVILLE COUNTY AND EMPORIA CITY",
+        "EMPORIA CITY" = "(REMOVE) EMPORIA CITY",
+        "HENRY COUNTY" = "HENRY COUNTY AND MARTINSVILLE CITY",
+        "MARTINSVILLE CITY" = "(REMOVE) MARTINSVILLE CITY",
+        "MONTGOMERY COUNTY" = "MONTGOMERY COUNTY AND RADFORD CITY",
+        "RADFORD CITY" = "(REMOVE) RADFORD CITY",
+        "PITTSYLVANIA COUNTY" = "PITTSYLVANIA COUNTY AND DANVILLE CITY",
+        "DANVILLE CITY" = "(REMOVE) DANVILLE CITY",
+        "PRINCE GEORGE COUNTY" = "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
+        "HOPEWELL CITY" = "(REMOVE) HOPEWELL CITY",
+        "PETERSBURG CITY" = "(REMOVE) PETERSBURG CITY",
+        "PRINCE WILLIAM COUNTY" = "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
+        "MANASSAS CITY" = "(REMOVE) MANASSAS CITY",
+        "MANASSAS PARK CITY" = "(REMOVE) MANASSAS PARK CITY",
+        "ROANOKE COUNTY" = "ROANOKE COUNTY, ROANOKE CITY, AND SALEM CITY",
+        "ROANOKE CITY" = "(REMOVE) ROANOKE CITY",
+        "SALEM CITY" = "(REMOVE) SALEM CITY",
+        "ROCKINGHAM COUNTY" = "ROCKINGHAM COUNTY AND HARRISONBURG CITY",
+        "HARRISONBURG CITY" = "(REMOVE) HARRISONBURG CITY",
+        "ROCKBRIDGE COUNTY" = "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
+        "BUENA VISTA CITY" = "(REMOVE) BUENA VISTA CITY",
+        "LEXINGTON CITY" = "(REMOVE) LEXINGTON CITY",
+        "SOUTHAMPTON COUNTY" = "SOUTHAMPTON COUNTY AND FRANKLIN CITY",
+        "FRANKLIN CITY" = "(REMOVE) FRANKLIN CITY",
+        "WASHINGTON COUNTY" = "WASHINGTON COUNTY AND BRISTOL CITY",
+        "BRISTOL CITY" = "(REMOVE) BRISTOL CITY",
+        "WISE COUNTY" = "WISE COUNTY AND NORTON CITY",
+        "NORTON CITY" = "(REMOVE) NORTON CITY"
+    )
+
+# filter on localities to-be-removed via regular expression
+filter(!grepl("\\(REMOVE\\)", Locality)) # localities coded for removal
+```
+
+### Data exclusion: Localities unable to self-compare before 2021
+
+ In addition, “VDH updated the method used to assign Virginia localities based on zip code in July 2021. As a result, the Rates per 10,000 ED Visits for 2021 may have changed compared to previously published data for the following localities: Appomattox, Buchanan, Dickenson, Dinwiddie, Frederick, Gloucester, Greensville, Hampton, Harrisonburg, Henrico, James City, Lancaster, Lexington, Manassas Park, Mathews, Nelson, Northumberland, Orange, Prince Edward, Prince George, Prince William, Richmond City, Rockbridge, Rockingham, Spotsylvania, Sussex, Winchester, York.” **As such, those city/county localities were also excluded from our analyses for data quality concerns.**
+
+```{r recode-remove-quality-issues-localities, eval=F}
+# recode localities with data quality issues for removal
+merged_nonheroin_opioid_edvisits_df[["Locality"]] <-
+    merged_nonheroin_opioid_edvisits_df[["Locality"]] %>%
+    recode(
+        "APPOMATTOX COUNTY" = "(QUALITY) APPOMATTOX COUNTY",
+        "BUCHANAN" = "(QUALITY) BUCHANAN COUNTY",
+        "DICKENSON"= "(QUALITY) DICKENSON COUNTY",
+        "DINWIDDIE COUNTY" = "(QUALITY) DINWIDDIE COUNTY",
+        "FREDERICK COUNTY AND WINCHESTER CITY" = "(QUALITY) FREDERICK COUNTY AND WINCHESTER CITY",
+        "GLOUCESTER COUNTY" = "(QUALITY) GLOUCESTER COUNTY",
+        "GREENSVILLE COUNTY AND EMPORIA CITY" = "(QUALITY) GREENSVILLE COUNTY AND EMPORIA CITY",
+        "HAMPTON CITY" = "(QUALITY) HAMPTON CITY",
+        "HENRICO COUNTY" = "(QUALITY) HENRICO COUNTY",
+        "JAMES CITY COUNTY" = "(QUALITY) JAMES CITY COUNTY",
+        "LANCASTER COUNTY" = "(QUALITY) LANCASTER COUNTY",
+        "MATHEWS COUNTY" = "(QUALITY) MATHEWS COUNTY",
+        "NELSON COUNTY" = "(QUALITY) NELSON CITY",
+        "NORTHUMBERLAND COUNTY" = "(QUALITY) NORTHUMBERLAND COUNTY",
+        "ORANGE COUNTY" = "(QUALITY) ORANGE COUNTY",
+        "PRINCE EDWARD COUNTY" = "(QUALITY) PRINCE EDWARD COUNTY",
+        "PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY" = "(QUALITY) PRINCE GEORGE COUNTY, HOPEWELL CITY, AND PETERSBURG CITY",
+        "PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY" = "(QUALITY) PRINCE WILLIAM COUNTY, MANASSAS CITY, AND MANASSAS PARK CITY",
+        "RICHMOND CITY" = "(QUALITY) RICHMOND CITY",
+        "ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY" = "(QUALITY) ROCKBRIDGE COUNTY, BUENA VISTA CITY, AND LEXINGTON CITY",
+        "ROCKHINGHAM COUNTY AND HARRISONBURG CITY" = "(QUALITY) ROCKINGHAM COUNTY AND HARRISONBURG CITY",
+        "SPOTSYLVANIA COUNTY" = "(QUALITY) SPOTSYLVANIA COUNTY",
+        "SUSSEX COUNTY" = "(QUALITY) SUSSEX COUNTY",
+        "YORK COUNTY" = "(QUALITY) YORK COUNTY"
+    )
+
+# filter on localities w/ data quality issues via regular expression
+filter(!grepl("\\(QUALITY\\)", Locality)) # localities coded for removal
+```
+
+## Final dataset
+
+# Exploratory data analysis
+
+## Data Missingness (and Zero Values)
+
+```{r summarize-missingness, results="asis"}
+monthly_rates_combined_long %>%
+    group_by(`Locality`, `FIPS`, `measure_name`) %>%
+    summarize(
+        nonNA_value_count = sum(! is.na(measure_value)),
+        nonzero_nonNA_value_count = sum(! is.na(measure_value) & (measure_value != 0))
+    ) %>%
+    arrange(desc(nonzero_nonNA_value_count)) %>%
+    knitr::kable("html") %>% print(n = 402)
+```
+
+## Exploratory Data Visualization
+
+"Looking at the (raw) data."
+
+### Monthly Rate Trajectory Plots
+
+```{r plotting_county_rates, message=F, warning=F}
+# generic plotting function for county opioid overdose ED visit rates
+locality_rates_plotter <- function(locality, measure) {
+    # time conversion (?)
+    monthly_rates_combined_long %>%
+    filter(Locality == locality, measure_name == measure) %>%
+    ggplot(aes(x = date, y = measure_value, group = Locality)) +
+        geom_line() +
+        geom_point() +
+        theme_classic() +
+        theme(legend.position = "none") +
+        ggtitle(paste0(locality)) +
+        ylab(measure)
+}
+# plot Virginia state overall
+locality_rates_plotter("VIRGINIA", "combined_rate")
+
+# plot each county (separately) [COMMENTED-OUT FOR NOW]
+# monthly_rates_combined_long[["Locality"]] %>% unique() %>%
+#     map(~ locality_rates_plotter(.x, "combined_rate"))
+```
+
+# Project To-Do List
+ - filter properly to unique geographies (remove replicates)
+ - read-in annual data as well
+ - properly "functionize" data reading-in code
+ - change trajectory plots' x-axes to include quarters and minor gridlines for each quarter/month? (and/or add points?)
+ - generate polar seasonal plots (for monthly rates)
+ - pull-in prior data file from 2015 as well, and compare overlapping data
+ - send in a request to VDH for the data from 2015 onwards, and ask if they can simply format the data as requested as well
+ - explore MS Word report generation 
+ - ~~render kables properly for HTML~~
