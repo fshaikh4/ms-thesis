@@ -4,7 +4,7 @@ subtitle: Opioid overdose emergency department (ED) visit rates per 10k ED visit
 author: Faysal Shaikh
 date: Last updated `r format(Sys.Date(), "%B %d, %Y")`
 output: 
-    bookdown::html_document2:
+    html_notebook:
         toc: true
         toc_depth: 4
         toc_float:
@@ -32,7 +32,12 @@ library(broom)
 library(tsibble)
 library(fable) # also loads fabletools
 library(feasts) # seasonal plots
-# library(casnet) # installed via remotes::install_github('FredHasselman/casnet'); fails so far, need to try w/ fresh R = 4.20 install
+
+# libraries for time series changepoint analyses
+library(casnet) # installed via remotes::install_github('FredHasselman/casnet')
+                # had to install rpart via install.packages() and Rtools 4.4 
+                # manually from https://cran.r-project.org/bin/windows/Rtools/rtools44/rtools.html
+library(Rbeast) # installed via install.packages() to get latest version (versus conda)
 ```
 
 ## Specify relevant paths
@@ -166,9 +171,11 @@ monthly_rates_combined_long <- full_join(
     long_monthly_rates_nonheroin_opioid, 
     long_monthly_rates_heroin
 ) %>% 
-mutate(combined_rate = 
-    replace_na(nonheroin_rate, 4) + # treat NAs as maximum suppressed value (4) for this sum
-    replace_na(heroin_rate, 4) # treat NAs as maximum suppressed value (4) for this sum
+mutate(combined_rate =
+    nonheroin_rate + heroin_rate
+    # # handling NAs in the sum; commented-out since we are ignoring NA for now
+    # replace_na(nonheroin_rate, 4) + # treat NAs as maximum suppressed value (4) for this sum
+    # replace_na(heroin_rate, 4) # treat NAs as maximum suppressed value (4) for this sum
 ) %>%
 pivot_longer(
     cols = ! c(`Locality`, `FIPS`, `Month & Year`),
@@ -312,6 +319,26 @@ monthly_rates_combined_long <- monthly_rates_combined_long %>%
     filter(!grepl("\\(QUALITY\\)", Locality))
 ```
 
+### Data exclusion: Localities w/ too much data missingness
+
+We set a threshold ourselves (here, hardcoded as no more than 10 datapoints missing or zero) to filter our data upon missingness. **NOT CURRENTLY IMPLEMENTED; INSTEAD RUNNING RESULTS FOR ALL COUNTIES**
+
+```{r filter-by-missingness, results = "asis", eval=F}
+# identify localities to keep based on low missingness and zero values
+include_localities <- monthly_rates_combined_long %>%
+    group_by(`Locality`, `FIPS`, `measure_name`) %>%
+    summarize(nonzero_nonNA_value_count = sum( measure_value > 8 )) %>%
+    # filter localities based on threshold of non-NA & non-zero values
+    filter(
+        measure_name == "combined_rate", # filter missingness on this
+        nonzero_nonNA_value_count >= 75 # specify threshold here
+    )
+
+# filter dataset to only keep localities determined
+monthly_rates_combined_long <- monthly_rates_combined_long %>%
+    filter(Locality %in% include_localities[["Locality"]])
+```
+
 ## Final dataset
 
 After removing city/county localities which were replicates in [Data exclusion/aggregation: (Replicates of) combined localities] and removing those with data quality/continuity issues prior to 2021 in [Data exclusion: Localities w/ data quality issues prior to 2021], we are now left with the following list of localities:
@@ -319,7 +346,7 @@ After removing city/county localities which were replicates in [Data exclusion/a
 ```{r final-locality-list}
 monthly_rates_combined_long %>%
     select(Locality) %>%
-    filter(Locality != "VIRGINIA") %>% # remove state-level data from list
+    filter(Locality != "VIRGINIA") %>% # remove state-level data from printed list
     unique() %>%
     as.vector()
 ```
@@ -330,10 +357,10 @@ monthly_rates_combined_long %>%
 
 ```{r summarize-missingness, results = "asis", eval=F}
 monthly_rates_combined_long %>%
+    filter(measure_name == "combined_rate") %>% # let's look only at this
     group_by(`Locality`, `FIPS`, `measure_name`) %>%
-    summarize(
-        nonNA_value_count = sum(! is.na(measure_value)),
-        nonzero_nonNA_value_count = sum(! is.na(measure_value) & (measure_value != 0))
+    # summarize(nonzero_nonNA_value_count = sum( measure_value > 8 ) # commented-out after removing substitution of NAs w/ 4s
+    summarize(nonzero_nonNA_value_count = sum( ! is.na(measure_value) & (measure_value != 0) ) # this version is where NAs are still NAs
     ) %>%
     arrange(desc(nonzero_nonNA_value_count)) %>%
     kbl("html") %>%
@@ -359,8 +386,12 @@ locality_rates_plotter <- function(locality, measure) {
         theme(legend.position = "none") +
         ggtitle(paste0(locality)) +
         ylab(measure) +
-        geom_hline(yintercept = 8, color = "red") +
-        scale_x_yearquarter(date_breaks = "1 year", date_minor_breaks = "13 weeks") +
+        # geom_hline(yintercept = 8, color = "red") + # remove line if no NA substitution for 4s
+        scale_x_yearquarter(
+            date_breaks = "1 year",
+            date_minor_breaks = "13 weeks",
+            date_labels = "%Y"
+        ) +
         theme(
             panel.grid.major.x = element_line(
                 color = "black",
@@ -371,7 +402,7 @@ locality_rates_plotter <- function(locality, measure) {
 }
 ```
 
-```{r plotter-for-all-locality-plots, message=F, warning=F}
+```{r plotter-for-all-locality-plots, message=F, warning=F, eval=F}
 # plot each county (separately) and Virginia state overall
 monthly_rates_combined_long[["Locality"]] %>%
     unique() %>%
@@ -404,7 +435,7 @@ locality_rates_polar_seasonal_plotter <- function(locality, measure) {
 }
 ```
 
-```{r polar-seasonal-plots, message=F, warning=F}
+```{r polar-seasonal-plots, message=F, warning=F, eval=F}
 monthly_rates_combined_long[["Locality"]] %>%
     unique() %>%
     map(~ locality_rates_polar_seasonal_plotter(.x, "combined_rate"))
@@ -427,11 +458,101 @@ locality_rates_monthly_subseries_plotter <- function(locality, measure) {
 }
 ```
 
-```{r monthly-subseries-plots, message=F, warning=F}
+```{r monthly-subseries-plots, message=F, warning=F, eval=F}
 monthly_rates_combined_long[["Locality"]] %>%
     unique() %>%
     map(~ locality_rates_monthly_subseries_plotter(.x, "combined_rate"))
 ```
+
+## Further data transformation
+
+Exploration that requires further transformation of the data.
+
+### Create data list
+
+```{r create-rates-data-list}
+combined_rate_locality_list <- monthly_rates_combined_long[["Locality"]] %>%
+    unique() %>%
+    map(function(locality){
+        data_extract <- list(
+            "combined_rate_df" = monthly_rates_combined_long %>%
+                filter(Locality == locality, measure_name == "combined_rate") %>%
+                # select only desired info for that locality: date & combined_rate
+                select(date, measure_value)
+        )
+    }
+
+    ) %>%
+    # set list's names to be localities
+    set_names(monthly_rates_combined_long[["Locality"]] %>% unique())
+```
+
+### Changepoint analysis
+
+#### Method 1: `casnet` library
+
+```{r casnet-changepoint-analysis, eval=T}
+# for list of localities' data, let's add ts_levels output
+locality_ts_levels_output <- function(locality_data_list){
+    ts_levels_output <- locality_data_list[["combined_rate_df"]] %>%
+        select("measure_value") %>%
+        unlist() %>%
+        as.numeric() %>%
+        ts_levels(
+            doLevelPlot = FALSE, # paused on returning plots
+            returnTree = TRUE,
+            returnPlot = FALSE # issues with stored ggplot objects
+        )
+
+    return(list("ts_levels_output" = ts_levels_output))
+}
+
+# append ts_levels output for all localities
+combined_rate_locality_list <- combined_rate_locality_list %>%
+    map(function(x) x[["ts_levels_output"]] <- c(x, locality_ts_levels_output(x)))
+```
+
+```{r loop-plot-ts_levels-plots, message=F, warning=F,eval=T}
+combined_rate_locality_list %>%
+    imap(.f = function(x, idx){
+        # gather vars for data df
+        dates <- pluck(x, "combined_rate_df") %>%
+            select("date") %>%
+            mutate(date = as_date(date))
+
+        data_line <- pluck(x, "combined_rate_df") %>%
+            select("measure_value")
+
+        ts_levels_line <- pluck(x, "ts_levels_output", "pred") %>%
+            select("p_adj")
+
+        # create data df for plotting
+        data_df <- as.data.frame(c(dates, data_line, ts_levels_line))
+
+        # use data df for plotting
+        ggplot(data_df, aes(x = date)) +
+        geom_point(aes(y = measure_value), color = "black") +
+        geom_line(aes(y = measure_value), color = "black") +
+        geom_line(aes(y = p_adj), color = "red") +
+        ggtitle(idx) +
+        scale_x_yearquarter(
+            date_breaks = "1 year",
+            date_minor_breaks = "13 weeks",
+            date_labels = "%Y"
+        ) +
+        theme_classic() +
+        theme(
+            panel.grid.major.x = element_line(
+                color = "black",
+                size = 0.2,
+                linetype = "dashed"
+            )
+        )
+    })
+```
+
+#### Method 2: `Rbeast` library
+
 
 # Project To-Do List
  - read-in annual data as well
